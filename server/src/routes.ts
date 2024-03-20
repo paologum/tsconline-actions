@@ -262,6 +262,18 @@ export const fetchUserDatapacks = async function fetchUserDatapacks(request: Fas
       .send({ error: "Failed to load indexes, corrupt json files present. Please contact customer service." });
     return;
   }
+
+  //PUBLIC CHECK
+  const publicDir = path.join(assetconfigs.uploadDirectory, "public");
+  try {
+    const publicDatapackData = await readFile(path.join(publicDir, "DatapackIndex.json"), "utf8");
+    Object.assign(datapackIndex, JSON.parse(publicDatapackData));
+    const publicMapData = await readFile(path.join(publicDir, "MapPackIndex.json"), "utf8");
+    Object.assign(mapPackIndex, JSON.parse(publicMapData));
+  } catch (e) {
+    console.log("Public directory does not exist or is empty - fetchUserDatapacks");
+  }
+
   const indexResponse = { datapackIndex, mapPackIndex };
   assertIndexResponse(indexResponse);
   reply.status(200).send(indexResponse);
@@ -269,7 +281,7 @@ export const fetchUserDatapacks = async function fetchUserDatapacks(request: Fas
 
 // If at some point a delete datapack function is needed, this function needs to be modified for race conditions
 export const uploadDatapack = async function uploadDatapack(request: FastifyRequest, reply: FastifyReply) {
-  const uuid = request.session.get("uuid");
+  const uuid = request.session.get("uuid"); //"username"; 
   if (!uuid) {
     reply.status(401).send({ error: "User not logged in" });
     return;
@@ -288,6 +300,7 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
   let userDir: string;
   let datapackDir: string;
   let filepath: string = "";
+  let isPublic = false;
   try {
     userDir = path.join(assetconfigs.uploadDirectory, uuid);
     datapackDir = path.join(userDir, "datapacks");
@@ -323,6 +336,9 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
   }
   const name = fields.name;
   const description = fields.description;
+  if (fields.isPublic === "true") {
+    isPublic = true;
+  }
 
   if (!uploadedFile) {
     await errorHandler("No file uploaded", 400);
@@ -423,7 +439,7 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
       return;
     }
   }
-  await loadIndexes(datapackIndex, mapPackIndex, decryptDir.replaceAll("\\", "/"), [datapackInfo], uuid);
+  await loadIndexes(datapackIndex, mapPackIndex, decryptDir.replaceAll("\\", "/"), [datapackInfo], uuid, isPublic);
   if (!datapackIndex[filename]) {
     await errorHandler("Failed to load decrypted datapack", 500);
     return;
@@ -447,6 +463,41 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
   } catch (e) {
     await errorHandler("Failed to load and write metadata for file", 500, e);
     return;
+  }
+  //public
+  if (isPublic) {
+    const publicDir = path.join(assetconfigs.uploadDirectory, "public");
+    const publicConfigPath = path.join(publicDir, "publicDatapacks.json");
+    try {
+      await mkdir(publicDir, { recursive: true });
+    } catch (e) {
+      await errorHandler("Failed to create public directory", 500, e);
+      return;
+    }
+    let publicConfig: Record<string, any> = {};
+    try {
+      const publicData = await readFile(publicConfigPath, "utf-8");
+      publicConfig = JSON.parse(publicData);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code != "ENOENT") {
+        await errorHandler("Failed to read public config file", 500, e);
+        return;
+      }
+    }
+    publicConfig[filename] = {
+      filepath: filepath,
+      user: uuid,
+      description: description,
+      title: name,
+      size: getBytes(bytes)
+    };
+
+    try {
+      await writeFile(publicConfigPath, JSON.stringify(publicConfig));
+    } catch (e) {
+      await errorHandler("Failed to update public config file", 500, e);
+      return;
+    }
   }
   reply.status(200).send({ message: "File uploaded" });
 };

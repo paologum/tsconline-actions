@@ -226,34 +226,38 @@ export const fetchUserDatapacks = action("fetchUserDatapacks", async () => {
   }
 });
 
-export const uploadDatapack = action("uploadDatapack", async (file: File, name: string, description: string) => {
-  if (state.datapackIndex[file.name]) {
-    pushError(ErrorCodes.DATAPACK_ALREADY_EXISTS);
-    return;
-  }
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("name", name);
-  formData.append("description", description);
-  try {
-    const response = await fetcher(`/upload`, {
-      method: "POST",
-      body: formData,
-      credentials: "include"
-    });
-    const data = await response.json();
-
-    if (response.ok) {
-      fetchUserDatapacks();
-      pushSnackbar("Successfully uploaded " + name + " datapack", "success");
-    } else {
-      displayServerError(data, ErrorCodes.INVALID_DATAPACK_UPLOAD, ErrorMessages[ErrorCodes.INVALID_DATAPACK_UPLOAD]);
+export const uploadDatapack = action(
+  "uploadDatapack",
+  async (file: File, name: string, description: string, isPublic: boolean) => {
+    if (state.datapackIndex[file.name]) {
+      pushError(ErrorCodes.DATAPACK_ALREADY_EXISTS);
+      return;
     }
-  } catch (e) {
-    displayServerError(null, ErrorCodes.SERVER_RESPONSE_ERROR, ErrorMessages[ErrorCodes.SERVER_RESPONSE_ERROR]);
-    console.error(e);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("name", name);
+    formData.append("description", description);
+    formData.append("isPublic", String(isPublic));
+    try {
+      const response = await fetcher(`/upload`, {
+        method: "POST",
+        body: formData,
+        credentials: "include"
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        fetchUserDatapacks();
+        pushSnackbar("Successfully uploaded " + name + " datapack", "success");
+      } else {
+        displayServerError(data, ErrorCodes.INVALID_DATAPACK_UPLOAD, ErrorMessages[ErrorCodes.INVALID_DATAPACK_UPLOAD]);
+      }
+    } catch (e) {
+      displayServerError(null, ErrorCodes.SERVER_RESPONSE_ERROR, ErrorMessages[ErrorCodes.SERVER_RESPONSE_ERROR]);
+      console.error(e);
+    }
   }
-});
+);
 
 export const setMapPackIndex = action("setMapPackIndex", async (mapPackIndex: MapPackIndex) => {
   // This is to prevent the UI from lagging

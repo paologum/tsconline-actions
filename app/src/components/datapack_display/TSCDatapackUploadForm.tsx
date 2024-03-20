@@ -1,4 +1,4 @@
-import { IconButton, TextField, Typography } from "@mui/material";
+import { FormControlLabel, IconButton, TextField, Typography } from "@mui/material";
 import { useContext, useState } from "react";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { InputFileUpload } from "../TSCFileUpload";
@@ -9,6 +9,7 @@ import { ErrorCodes } from "../../util/error-codes";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { CustomDivider } from "../TSCComponents";
+import { TSCCheckbox } from "../TSCCheckbox";
 
 type TSCDatapackUploadFormProps = {
   close: () => void;
@@ -19,6 +20,7 @@ export const TSCDatapackUploadForm: React.FC<TSCDatapackUploadFormProps> = ({ cl
   const [datapackName, setDatapackName] = useState("");
   const [datapackDescription, setDatapackDescription] = useState("");
   const [datapackFile, setDatapackFile] = useState<File | null>(null);
+  const [isPublic, setIsPublic] = useState(false);
   return (
     <>
       <div className="close-upload-form">
@@ -91,6 +93,17 @@ export const TSCDatapackUploadForm: React.FC<TSCDatapackUploadFormProps> = ({ cl
           value={datapackDescription}
           onChange={(event) => setDatapackDescription(event.target.value)}
         />
+        <FormControlLabel
+          name="public-datapack"
+          control={
+            <TSCCheckbox
+              className="public-checkbox"
+              onChange={(event) => setIsPublic(event.target.checked)}
+              checked={isPublic}
+            />
+          }
+          label="Make this upload public"
+        />
         <div className="file-upload-button">
           <TSCButton
             onClick={() => {
@@ -112,7 +125,7 @@ export const TSCDatapackUploadForm: React.FC<TSCDatapackUploadFormProps> = ({ cl
               }
               actions.removeError(ErrorCodes.NO_DATAPACK_FILE_FOUND);
               actions.removeError(ErrorCodes.UNFINISHED_DATAPACK_UPLOAD_FORM);
-              upload(datapackFile, datapackName, datapackDescription);
+              upload(datapackFile, datapackName, datapackDescription, isPublic);
               setDatapackFile(null);
               setDatapackName("");
               setDatapackDescription("");

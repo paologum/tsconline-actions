@@ -54,6 +54,12 @@
       "description": "From earliest fish to primates (with an extended section on dinosaurs) acccompanied by schematic images and external links. In addition to branching evolution, one can turn on a more extensive suite of ranges of selected ancient groups. [NOTE: Evolution branching is best visualized using intervals greater than 60 myr and with a vertical scale of 0.5 or less.]",
       "file": "Vertebrates w_Images GTS2020 23Jan2021.dpk",
       "size": "5 MB"
+    },
+    {
+      "title": "Human Culture",
+      "description": "Global 'human culture' intervals (ca. 200 columns), plus climate signal from Greenland ice cores (From Seierstad et al. (2014 QuatSciRev); NGRIP1 until 9820 b2k, NGRIP2 below). Table of contents and references at HumanCulture_IceCore_contents_Apr2020.pdf. [NOTE: This datapack must be inserted using the 'Replace Data with Datapack' command; the scale in kyr is not compatible with the internal dataset in myr. A vertical scale of 5 kyr/cm is recommended to see details.] [Provided courtesy of Grace Conyers and Colleen Klockow, Purdue University; with updates and enhancements for Concise Geologic TimeScale 2016]. We are looking for volunteers to enhance the regional sets.]",
+      "file": "HumanCulture_ENCRYPTED_21Apr2020.txt",
+      "size": "0.5 MB"
     }
   ],
   "decryptionJar": "assets/jars/datapack-decrypter_21Jun2024.jar",
