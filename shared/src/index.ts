@@ -31,6 +31,10 @@ export type DatapackParsingPack = {
   date?: string;
   verticalScale?: number;
   isUserDatapack: boolean;
+  description: string;
+  title: string;
+  file: string;
+  size: string;
 };
 
 export type IndexResponse = {
@@ -749,6 +753,7 @@ export function assertDatapackParsingPack(o: any): asserts o is DatapackParsingP
     throwError("DatapackParingPack", "isUserDatapack", "boolean", o.isUserDatapack);
   assertColumnInfo(o.columnInfo);
 }
+
 export function assertDatapackIndex(o: any): asserts o is DatapackIndex {
   if (!o || typeof o !== "object") throw new Error("DatapackIndex must be a non-null object");
   for (const key in o) {

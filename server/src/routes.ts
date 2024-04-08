@@ -10,8 +10,8 @@ import {
   assertChartRequest,
   assertDatapackIndex,
   assertIndexResponse,
-  assertMapPackIndex,
-  assertTimescale
+  assertTimescale,
+  assertMapPackIndex
 } from "@tsconline/shared";
 import { deleteDirectory, resetUploadDirectory, checkHeader } from "./util.js";
 import { mkdirp } from "mkdirp";
@@ -27,6 +27,8 @@ import { updateFileMetadata, writeFileMetadata } from "./file-metadata-handler.j
 import { datapackIndex as serverDatapackindex, mapPackIndex as serverMapPackIndex } from "./index.js";
 import { glob } from "glob";
 import { rm } from "fs/promises";
+import { DatapackDescriptionInfo } from "./types.js";
+import stream from "stream";
 
 export const fetchServerDatapackInfo = async function fetchServerDatapackInfo(
   request: FastifyRequest<{ Querystring: { start?: string; increment?: string } }>,
@@ -270,6 +272,8 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
     reply.status(404).send({ error: "No file uploaded" });
     return;
   }
+
+
   // only accept a binary file (encoded) or an unecnrypted text file or a zip file
   if (
     file.mimetype !== "application/octet-stream" &&
@@ -279,6 +283,7 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
     reply.status(400).send({ error: `Invalid mimetype of uploaded file, received ${file.mimetype}` });
     return;
   }
+  const max_file_size = 20 * 1024 * 1024; // 20 MB
   const filename = file.filename;
   const ext = path.extname(filename);
   const filenameWithoutExtension = path.basename(filename, ext);
@@ -289,6 +294,13 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
   const decryptedFilepathDir = path.join(decryptDir, filenameWithoutExtension);
   const mapPackIndexFilepath = path.join(userDir, "MapPackIndex.json");
   const datapackIndexFilepath = path.join(userDir, "DatapackIndex.json");
+  //const serverdatapackInfo: DatapackIndex = {};
+  const datapackInfo: DatapackDescriptionInfo = {
+    file: filename,
+    description: "",
+    title: "",
+    size: ""
+  };
   async function errorHandler(message: string, errorStatus: number, e?: unknown) {
     e && console.error(e);
     await resetUploadDirectory(filepath, decryptedFilepathDir);
@@ -299,12 +311,26 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
     return;
   }
   await mkdirp(datapackDir);
+  let fileSize = 0;
   const fileStream = file.file;
+  //file size limit
+  const sizeCheck = new stream.Transform({
+    transform(chunk, encoding, callback) {
+      fileSize += chunk.length;
+      if (fileSize > max_file_size) {
+        callback(new Error("File too large"));
+      } else {
+        callback(null, chunk);
+      }
+    
+  }})
+
+
   console.log("Uploading file: ", filename);
   try {
     // must wait for the file to be written before decrypting
     await new Promise<void>((resolve, reject) => {
-      pump(fileStream, fs.createWriteStream(filepath), (err) => {
+      pump(fileStream, sizeCheck, fs.createWriteStream(filepath), (err) => {
         if (err) {
           reject(err);
         } else {
@@ -377,7 +403,7 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
       return;
     }
   }
-  await loadIndexes(datapackIndex, mapPackIndex, decryptDir.replaceAll("\\", "/"), [filename], true);
+  await loadIndexes(datapackIndex, mapPackIndex, decryptDir.replaceAll("\\", "/"), [datapackInfo], true);
   if (!datapackIndex[filename]) {
     await errorHandler("Failed to load decrypted datapack", 500);
     return;
@@ -527,9 +553,10 @@ export const fetchChart = async function fetchChart(request: FastifyRequest, rep
   const userDatapackNames = userDatapackFilepaths.map((datapack) => path.basename(datapack));
   const datapacks = [];
   const userDatapacks = [];
+  const serverDatapacks = assetconfigs.activeDatapacks.map((datapack) => datapack.file);
 
   for (const datapack of chartrequest.datapacks) {
-    if (assetconfigs.activeDatapacks.includes(datapack)) {
+    if (serverDatapacks.includes(datapack)) {
       datapacks.push(`"${assetconfigs.datapacksDirectory}/${datapack}"`);
     } else if (uuid && userDatapackNames.includes(datapack)) {
       userDatapacks.push(path.join(assetconfigs.uploadDirectory, uuid, "datapacks", datapack));

@@ -2650,7 +2650,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/lodash@npm:^4":
+"@types/lodash@npm:^4, @types/lodash@npm:^4.17.1":
   version: 4.17.1
   resolution: "@types/lodash@npm:4.17.1"
   checksum: 384bdd29348a000f8e815f94839a1a8c7f5a4ca856b016ade7f2abdc1df0b4e3e009c113b69db320a8fde51d1f38e60c19462b9bf3e82e0e2e32d3ac3e7ba2c4
@@ -10525,6 +10525,7 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:^8"
     "@types/jest": "npm:^29.5.12"
+    "@types/lodash": "npm:^4.17.1"
     "@types/node": "npm:^20.11.28"
     "@typescript-eslint/eslint-plugin": "npm:^7.0.2"
     "@typescript-eslint/parser": "npm:^7.0.2"

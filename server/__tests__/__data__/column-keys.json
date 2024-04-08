@@ -451,7 +451,11 @@
       "ageUnits": "Ma",
       "defaultChronostrat": "UNESCO",
       "formatVersion": 1.5,
-      "isUserDatapack": false
+      "isUserDatapack": false,
+      "file": "",
+      "description": "",
+      "title": "",
+      "size": ""
     },
     "general-parse-datapacks-test-2-key": {
       "columnInfo": {
@@ -1266,7 +1270,11 @@
       "formatVersion": 1,
       "verticalScale": 6,
       "date": "2015-03-15",
-      "isUserDatapack": false
+      "isUserDatapack": false,
+      "file": "",
+      "description": "",
+      "title": "",
+      "size": ""
     },
     "column-types-facies-key": {
         "FaciesOne": {
@@ -2188,6 +2196,10 @@
             "ageUnits": "Ma",
             "defaultChronostrat": "UNESCO",
             "formatVersion": 1.5,
-            "isUserDatapack": false
+            "isUserDatapack": false,
+            "file": "",
+            "description": "",
+            "title": "",
+            "size": ""
     }
 }

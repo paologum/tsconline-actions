@@ -99,7 +99,7 @@ export const Datapacks = observer(function Datapacks() {
 
                   <td className="info-cell">
                     <div>
-                      <Tooltip title="Description" arrow placement="right">
+                      <Tooltip title={"state.datapackIndex[index].description"} arrow placement="right">
                         <InfoIcon className="info-icon" />
                       </Tooltip>
                     </div>

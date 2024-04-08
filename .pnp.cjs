@@ -43,6 +43,7 @@ const RAW_RUNTIME_STATE =
         "packageDependencies": [\
           ["@types/eslint", "npm:8.56.3"],\
           ["@types/jest", "npm:29.5.12"],\
+          ["@types/lodash", "npm:4.17.1"],\
           ["@types/node", "npm:20.11.28"],\
           ["@typescript-eslint/eslint-plugin", "virtual:56199d26d2392209a21349d11441f1e2988343393fe1626496fc474411fec889161d978be128038fa78cc187159c138c3943f93b2531d8228fa826f4ba633a5f#npm:7.0.2"],\
           ["@typescript-eslint/parser", "virtual:56199d26d2392209a21349d11441f1e2988343393fe1626496fc474411fec889161d978be128038fa78cc187159c138c3943f93b2531d8228fa826f4ba633a5f#npm:7.0.2"],\
@@ -12747,6 +12748,7 @@ const RAW_RUNTIME_STATE =
           ["tsconline-monorepo", "workspace:."],\
           ["@types/eslint", "npm:8.56.3"],\
           ["@types/jest", "npm:29.5.12"],\
+          ["@types/lodash", "npm:4.17.1"],\
           ["@types/node", "npm:20.11.28"],\
           ["@typescript-eslint/eslint-plugin", "virtual:56199d26d2392209a21349d11441f1e2988343393fe1626496fc474411fec889161d978be128038fa78cc187159c138c3943f93b2531d8228fa826f4ba633a5f#npm:7.0.2"],\
           ["@typescript-eslint/parser", "virtual:56199d26d2392209a21349d11441f1e2988343393fe1626496fc474411fec889161d978be128038fa78cc187159c138c3943f93b2531d8228fa826f4ba633a5f#npm:7.0.2"],\
