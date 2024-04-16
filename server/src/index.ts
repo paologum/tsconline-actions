@@ -12,6 +12,7 @@ import { loadPresets } from "./preset.js";
 import { AssetConfig, assertAssetConfig } from "./types.js";
 import { readFile } from "fs/promises";
 import fastifyMultipart from "@fastify/multipart";
+import { checkFileMetadata, sunsetInterval } from "./file-metadata-handler.js";
 
 const server = fastify({
   logger: false,
@@ -58,8 +59,8 @@ try {
   process.exit(1);
 }
 
-const datapackIndex: DatapackIndex = {};
-const mapPackIndex: MapPackIndex = {};
+export const datapackIndex: DatapackIndex = {};
+export const mapPackIndex: MapPackIndex = {};
 const patterns = await loadFaciesPatterns();
 await loadIndexes(datapackIndex, mapPackIndex, assetconfigs.decryptionDirectory, assetconfigs.activeDatapacks);
 
@@ -113,7 +114,7 @@ server.get("/presets", async (_request, reply) => {
 server.post<{ Params: { username: string } }>("/upload/:username", routes.uploadDatapack);
 
 //fetches json object of requested settings file
-server.get<{ Params: { settingFile: string } }>("/settingsXml/:settingFile", routes.fetchSettingsXml);
+server.get<{ Params: { file: string } }>("/settingsXml/:file", routes.fetchSettingsXml);
 
 server.get("/datapackinfoindex", (_request, reply) => {
   if (!datapackIndex || !mapPackIndex) {
@@ -144,8 +145,8 @@ server.get("/user-datapacks/:username", routes.fetchUserDatapacks);
 
 // generates chart and sends to proper directory
 // will return url chart path and hash that was generated for it
-server.post<{ Params: { usecache: string; useSuggestedAge: string } }>(
-  "/charts/:usecache/:useSuggestedAge",
+server.post<{ Params: { usecache: string; useSuggestedAge: string; username: string } }>(
+  "/charts/:usecache/:useSuggestedAge/:username",
   routes.fetchChart
 );
 
@@ -157,6 +158,9 @@ server.get<{ Params: { datapackName: string; imageName: string } }>(
   routes.fetchImage
 );
 
+setInterval(() => {
+  checkFileMetadata(assetconfigs.fileMetadata);
+}, sunsetInterval);
 // Start the server...
 try {
   await server.listen({

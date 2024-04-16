@@ -1,5 +1,5 @@
-import { action, runInAction } from "mobx";
-import { TimescaleItem } from "@tsconline/shared";
+import { action } from "mobx";
+import { ChartInfoTSC, ChartSettingsInfoTSC, TimescaleItem } from "@tsconline/shared";
 
 import {
   type MapInfo,
@@ -18,8 +18,7 @@ import {
   defaultFontsInfo,
   assertIndexResponse,
   assertPresets,
-  assertPatterns,
-  ChartInfoTSC
+  assertPatterns
 } from "@tsconline/shared";
 import { state, State } from "../state";
 import { fetcher } from "../../util";
@@ -28,6 +27,7 @@ import { xmlToJson } from "../parse-settings";
 import { displayServerError } from "./util-actions";
 import { compareStrings } from "../../util/util";
 import { ErrorCodes, ErrorMessages } from "../../util/error-codes";
+import { equalChartSettings, equalConfig } from "../../types";
 
 export const fetchFaciesPatterns = action("fetchFaciesPatterns", async () => {
   try {
@@ -60,11 +60,18 @@ export const resetSettings = action("resetSettings", () => {
     baseStageAge: 0,
     baseStageKey: "",
     unitsPerMY: 2,
+    noIndentPattern: false,
+    enableColumnBackground: false,
+    enableChartLegend: false,
+    enablePriority: false,
+    enableHideBlockLabel: false,
+    skipEmptyColumns: true,
     useDatapackSuggestedAge: true,
     mouseOverPopupsEnabled: false,
     datapackContainsSuggAge: false,
     selectedBaseStage: "",
-    selectedTopStage: ""
+    selectedTopStage: "",
+    unit: "Ma"
   };
 });
 
@@ -107,6 +114,9 @@ export const fetchPresets = action("fetchPresets", async () => {
   }
 });
 
+/**
+ * This will grab the user datapacks AND the server datapacks from the server
+ */
 export const fetchUserDatapacks = action("fetchUserDatapacks", async (username: string) => {
   try {
     const response = await fetcher(`/user-datapacks/${username}`, {
@@ -116,8 +126,8 @@ export const fetchUserDatapacks = action("fetchUserDatapacks", async (username: 
     try {
       assertIndexResponse(data);
       const { mapPackIndex, datapackIndex } = data;
-      Object.assign(state.mapPackIndex, mapPackIndex);
-      Object.assign(state.datapackIndex, datapackIndex);
+      state.mapPackIndex = mapPackIndex;
+      state.datapackIndex = datapackIndex;
       console.log("User Datapacks loaded");
     } catch (e) {
       displayServerError(data, ErrorCodes.INVALID_USER_DATAPACKS, ErrorMessages[ErrorCodes.INVALID_USER_DATAPACKS]);
@@ -129,6 +139,10 @@ export const fetchUserDatapacks = action("fetchUserDatapacks", async (username: 
 });
 
 export const uploadDatapack = action("uploadDatapack", async (file: File, username: string, name: string) => {
+  if (state.datapackIndex[file.name]) {
+    pushError(ErrorCodes.DATAPACK_ALREADY_EXISTS);
+    return;
+  }
   const formData = new FormData();
   formData.append("file", file);
   try {
@@ -179,6 +193,35 @@ export const fetchTimescaleDataAction = action("fetchTimescaleData", async () =>
   }
 });
 
+const setChartSettings = action("setChartSettings", (settings: ChartSettingsInfoTSC) => {
+  const {
+    topAge,
+    baseAge,
+    unitsPerMY,
+    skipEmptyColumns,
+    doPopups,
+    noIndentPattern,
+    enChartLegend,
+    enEventColBG,
+    enHideBlockLable,
+    enPriority
+  } = settings;
+  if (topAge.text) {
+    setTopStageAge(topAge.text);
+  }
+  if (baseAge.text) {
+    setBaseStageAge(baseAge.text);
+  }
+  setUnitsPerMY(unitsPerMY.text);
+  setSkipEmptyColumns(skipEmptyColumns.text);
+  setMouseOverPopupsEnabled(doPopups);
+  setEnableChartLegend(enChartLegend);
+  setEnablePriority(enPriority);
+  setEnableColumnBackground(enEventColBG);
+  setNoIndentPattern(noIndentPattern);
+  setEnableHideBlockLabel(enHideBlockLable);
+});
+
 /**
  * Rests the settings, sets the tabs to 0
  * sets chart to newval and requests info on the datapacks from the server
@@ -186,51 +229,37 @@ export const fetchTimescaleDataAction = action("fetchTimescaleData", async () =>
  */
 export const setDatapackConfig = action(
   "setChart",
-  async (datapacks: string[], settingsPath: string): Promise<boolean> => {
-    //set the settings tab back to time
-    setSettingsTabsSelected(0);
+  async (datapacks: string[], settingsPath?: string): Promise<boolean> => {
     let datapackAgeInfo: DatapackAgeInfo = {
       datapackContainsSuggAge: false
     };
     let mapInfo: MapInfo = {};
     let mapHierarchy: MapHierarchy = {};
     let columnInfo: ColumnInfo;
+    let chartSettings: ChartInfoTSC = {};
     try {
-      // Grab the settings for this chart if there are any:
-      //TODO: only get default settings file if its a preset
       if (settingsPath && settingsPath.length > 0) {
-        const res = await fetcher(`/settingsXml/${encodeURIComponent(settingsPath)}`, {
-          method: "GET"
-        });
-        let settingsXml;
-        let settingsTSC: ChartInfoTSC;
-        try {
-          settingsXml = await res.text();
-        } catch (e) {
-          //couldn't get settings from server
-          displayServerError(
-            null,
-            ErrorCodes.INVALID_SETTINGS_RESPONSE,
-            ErrorMessages[ErrorCodes.INVALID_SETTINGS_RESPONSE]
-          );
-          return false;
-        }
-        try {
-          settingsTSC = xmlToJson(settingsXml);
-        } catch (e) {
-          //couldn't parse settings
-          displayServerError(e, ErrorCodes.INVALID_SETTINGS_RESPONSE, "Error parsing xml settings file");
-          return false;
-        }
-        runInAction(() => (state.settingsTSC = settingsTSC)); // Save the parsed JSON to the state.settingsTSC
-      } else {
-        state.settingsTSC = {};
+        await fetchSettingsXML(settingsPath)
+          .then((settings) => {
+            if (settings) {
+              removeError(ErrorCodes.INVALID_SETTINGS_RESPONSE);
+              chartSettings = settings;
+            } else {
+              return false;
+            }
+          })
+          .catch((e) => {
+            console.error(e);
+            pushError(ErrorCodes.INVALID_SETTINGS_RESPONSE);
+            return false;
+          });
       }
       // the default overarching variable for the columnInfo
       columnInfo = {
-        name: "Root", // if you change this, change parse-datapacks.ts :69
-        editName: "Chart Title",
+        name: "Chart Root", // if you change this, change parse-datapacks.ts :69
+        editName: "Chart Root",
         fontsInfo: JSON.parse(JSON.stringify(defaultFontsInfo)),
+        fontOptions: ["Column Header"],
         popup: "",
         on: true,
         width: 100,
@@ -244,11 +273,12 @@ export const setDatapackConfig = action(
         maxAge: state.settings.baseStageAge,
         children: [
           {
-            name: "Ma",
-            editName: "Ma",
+            name: "Chart Title",
+            editName: "Chart Title",
             fontsInfo: JSON.parse(JSON.stringify(defaultFontsInfo)),
             on: true,
             width: 100,
+            fontOptions: ["Column Header"],
             enableTitle: true,
             rgb: {
               r: 255,
@@ -256,8 +286,28 @@ export const setDatapackConfig = action(
               b: 255
             },
             popup: "",
-            children: [],
-            parent: "Root", // if you change this, change parse-datapacks.ts :69
+            children: [
+              {
+                name: "Ma",
+                editName: "Ma",
+                fontsInfo: JSON.parse(JSON.stringify(defaultFontsInfo)),
+                fontOptions: ["Column Header", "Ruler Label"],
+                on: true,
+                width: 100,
+                enableTitle: true,
+                rgb: {
+                  r: 255,
+                  g: 255,
+                  b: 255
+                },
+                popup: "",
+                children: [],
+                parent: "Chart Title", // if you change this, change parse-datapacks.ts :69
+                minAge: state.settings.topStageAge, //tbd
+                maxAge: state.settings.baseStageAge //tbd
+              }
+            ],
+            parent: "Chart Root", // if you change this, change parse-datapacks.ts :69
             minAge: state.settings.topStageAge, //tbd
             maxAge: state.settings.baseStageAge //tbd
           }
@@ -267,12 +317,14 @@ export const setDatapackConfig = action(
       // add everything together
       // uses preparsed data on server start and appends items together
       for (const datapack of datapacks) {
-        if (!datapack || !state.datapackIndex[datapack] || !state.mapPackIndex[datapack])
+        if (!datapack || !state.datapackIndex[datapack])
           throw new Error(`File requested doesn't exist on server: ${datapack}`);
         const datapackParsingPack = state.datapackIndex[datapack]!;
         // concat the children array of root to the array created in preparsed array
         // we can't do Object.assign here because it will overwrite the array rather than concat it
-        columnInfo.children = columnInfo.children.concat(datapackParsingPack.columnInfoArray);
+        // concat datapack info under chart title column info
+        // todo: create multiple chart titles if creating two different charts in one
+        columnInfo.children[0].children = columnInfo.children[0].children.concat(datapackParsingPack.columnInfoArray);
         // concat datapackAgeInfo objects together
         if (!datapackAgeInfo) datapackAgeInfo = datapackParsingPack.datapackAgeInfo;
         else Object.assign(datapackAgeInfo, datapackParsingPack.datapackAgeInfo);
@@ -288,6 +340,7 @@ export const setDatapackConfig = action(
       assertColumnInfo(columnInfo);
       assertMapInfo(mapInfo);
     } catch (e) {
+      console.error(e);
       pushError(ErrorCodes.INVALID_DATAPACK_CONFIG);
       return false;
     }
@@ -296,12 +349,37 @@ export const setDatapackConfig = action(
     state.settingsTabs.columns = columnInfo;
     state.mapState.mapInfo = mapInfo;
     state.config.datapacks = datapacks;
-    state.config.settingsPath = settingsPath;
-    initializeColumnHashMap(columnInfo);
+    state.settingsTSC = chartSettings;
+    initializeColumnHashMap(state.settingsTabs.columns);
     resetSettings();
+    if (state.settingsTSC.settings) {
+      setChartSettings(state.settingsTSC.settings);
+    }
     return true;
   }
 );
+
+const fetchSettingsXML = async (settingsPath: string): Promise<ChartInfoTSC | null> => {
+  const res = await fetcher(`/settingsXml/${encodeURIComponent(settingsPath)}`, {
+    method: "GET"
+  });
+  let settingsXml;
+  try {
+    settingsXml = await res.text();
+  } catch (e) {
+    //couldn't get settings from server
+    displayServerError(null, ErrorCodes.INVALID_SETTINGS_RESPONSE, ErrorMessages[ErrorCodes.INVALID_SETTINGS_RESPONSE]);
+    return null;
+  }
+  try {
+    const settingsJson = xmlToJson(settingsXml);
+    return settingsJson;
+  } catch (e) {
+    //couldn't parse settings
+    displayServerError(e, ErrorCodes.INVALID_SETTINGS_RESPONSE, "Error parsing xml settings file");
+  }
+  return null;
+};
 
 /**
  * Sets the geological top stages and the base stages
@@ -506,7 +584,7 @@ export const pushError = action("pushError", (context: ErrorCodes) => {
 export const removeSnackbar = action("removeSnackbar", (text: string) => {
   state.snackbars = state.snackbars.filter((info) => info.snackbarText !== text);
 });
-export const pushSnackbar = action("pushSnackbar", (text: string, severity: "success" | "info") => {
+export const pushSnackbar = action("pushSnackbar", (text: string, severity: "success" | "info" | "warning") => {
   if (text.length > 70) {
     console.error("The length of snackbar text must be less than 70");
     return;
@@ -545,6 +623,13 @@ export const setuseDatapackSuggestedAge = action((isChecked: boolean) => {
   state.settings.useDatapackSuggestedAge = isChecked;
 });
 export const setTab = action("setTab", (newval: number) => {
+  if (
+    newval == 1 &&
+    state.chartContent &&
+    (!equalChartSettings(state.settings, state.prevSettings) || !equalConfig(state.config, state.prevConfig))
+  ) {
+    pushSnackbar("Chart settings are different from the displayed chart.", "warning");
+  }
   state.tab = newval;
 });
 export const setSettingsColumns = action((temp?: ColumnInfo) => {
@@ -619,4 +704,22 @@ export const settingsXML = action("settingsXML", (xml: string) => {
 
 export const setIsFullscreen = action("setIsFullscreen", (newval: boolean) => {
   state.isFullscreen = newval;
+});
+export const setSkipEmptyColumns = action("setSkipEmptyColumns", (newval: boolean) => {
+  state.settings.skipEmptyColumns = newval;
+});
+export const setNoIndentPattern = action("setNoIndentPattern", (newval: boolean) => {
+  state.settings.noIndentPattern = newval;
+});
+export const setEnableColumnBackground = action("setEnableColumnBackground", (newval: boolean) => {
+  state.settings.enableColumnBackground = newval;
+});
+export const setEnableChartLegend = action("setEnableChartLegend", (newval: boolean) => {
+  state.settings.enableChartLegend = newval;
+});
+export const setEnablePriority = action("setEnablePriority", (newval: boolean) => {
+  state.settings.enablePriority = newval;
+});
+export const setEnableHideBlockLabel = action("setEnableHideBlockLabel", (newval: boolean) => {
+  state.settings.enableHideBlockLabel = newval;
 });

@@ -21,6 +21,9 @@ import { parseExcelFile } from "./parse-excel-file.js";
 import path from "path";
 import pump from "pump";
 import { loadIndexes } from "./load-packs.js";
+import { writeFileMetadata } from "./file-metadata-handler.js";
+import { datapackIndex as serverDatapackindex, mapPackIndex as serverMapPackIndex } from "./index.js";
+import { glob } from "glob";
 
 export const fetchUserDatapacks = async function fetchUserDatapacks(
   request: FastifyRequest<{ Params: { username: string } }>,
@@ -37,8 +40,8 @@ export const fetchUserDatapacks = async function fetchUserDatapacks(
     reply.status(404).send({ error: "User does not exist" });
     return;
   }
-  const datapackIndex: DatapackIndex = {};
-  const mapPackIndex: MapPackIndex = {};
+  const datapackIndex: DatapackIndex = JSON.parse(JSON.stringify(serverDatapackindex));
+  const mapPackIndex: MapPackIndex = JSON.parse(JSON.stringify(serverMapPackIndex));
   try {
     if (fs.existsSync(path.join(userDir, "DatapackIndex.json"))) {
       Object.assign(datapackIndex, JSON.parse(fs.readFileSync(path.join(userDir, "DatapackIndex.json")).toString()));
@@ -91,9 +94,7 @@ export const uploadDatapack = async function uploadDatapack(
     reply.status(415).send({ error: "Invalid file type" });
     return;
   }
-  if (!fs.existsSync(datapackDir)) {
-    fs.mkdirSync(datapackDir, { recursive: true });
-  }
+  await mkdirp(datapackDir);
   const fileStream = file.file;
   console.log("Uploading file: ", filename);
   try {
@@ -108,12 +109,13 @@ export const uploadDatapack = async function uploadDatapack(
       });
     });
   } catch (e) {
-    resetUploadDirectory(filepath, decryptedFilepathDir);
+    console.error(e);
+    await resetUploadDirectory(filepath, decryptedFilepathDir);
     reply.status(500).send({ error: "Failed to save file with error: " + e });
     return;
   }
   if (file.file.truncated) {
-    resetUploadDirectory(filepath, decryptedFilepathDir);
+    await resetUploadDirectory(filepath, decryptedFilepathDir);
     reply.status(413).send({ error: "File too large" });
     return;
   }
@@ -122,9 +124,9 @@ export const uploadDatapack = async function uploadDatapack(
       const cmd =
         `java -jar ${assetconfigs.decryptionJar} ` +
         // Decrypting these datapacks:
-        `-d "${filepath}" ` +
+        `-d "${filepath.replaceAll("\\", "/")}" ` +
         // Tell it where to send the datapacks
-        `-dest ${decryptDir} `;
+        `-dest ${decryptDir.replaceAll("\\", "/")} `;
       console.log("Calling Java decrypt.jar: ", cmd);
       exec(cmd, function (error, stdout, stderror) {
         console.log("Java decrypt.jar finished, sending reply to browser");
@@ -139,12 +141,13 @@ export const uploadDatapack = async function uploadDatapack(
       });
     });
   } catch (e) {
-    resetUploadDirectory(filepath, decryptedFilepathDir);
+    console.error(e);
+    await resetUploadDirectory(filepath, decryptedFilepathDir);
     reply.status(500).send({ error: "Failed to decrypt datapacks with error " + e });
     return;
   }
   if (!fs.existsSync(decryptedFilepathDir) || !fs.existsSync(path.join(decryptedFilepathDir, "datapacks"))) {
-    resetUploadDirectory(filepath, decryptedFilepathDir);
+    await resetUploadDirectory(filepath, decryptedFilepathDir);
     reply.status(500).send({ error: "Failed to decrypt file" });
     return;
   }
@@ -157,7 +160,8 @@ export const uploadDatapack = async function uploadDatapack(
       Object.assign(datapackIndex, JSON.parse(data.toString()));
       assertDatapackIndex(datapackIndex);
     } catch (e) {
-      resetUploadDirectory(filepath, decryptedFilepathDir);
+      console.error(e);
+      await resetUploadDirectory(filepath, decryptedFilepathDir);
       reply.status(500).send({ error: "Failed to parse DatapackIndex.json" });
       return;
     }
@@ -169,14 +173,15 @@ export const uploadDatapack = async function uploadDatapack(
       Object.assign(mapPackIndex, JSON.parse(data.toString()));
       assertMapPackIndex(mapPackIndex);
     } catch (e) {
-      resetUploadDirectory(filepath, decryptedFilepathDir);
+      console.error(e);
+      await resetUploadDirectory(filepath, decryptedFilepathDir);
       reply.status(500).send({ error: "Failed to parse MapPackIndex.json" });
       return;
     }
   }
-  await loadIndexes(datapackIndex, mapPackIndex, decryptDir, [filename]);
+  await loadIndexes(datapackIndex, mapPackIndex, decryptDir.replaceAll("\\", "/"), [filename]);
   if (!datapackIndex[filename]) {
-    resetUploadDirectory(filepath, decryptedFilepathDir);
+    await resetUploadDirectory(filepath, decryptedFilepathDir);
     reply.status(500).send({ error: "Failed to load decrypted datapack" });
     return;
   }
@@ -184,8 +189,24 @@ export const uploadDatapack = async function uploadDatapack(
     await writeFile(datapackIndexFilepath, JSON.stringify(datapackIndex));
     await writeFile(mapPackIndexFilepath, JSON.stringify(mapPackIndex));
   } catch (e) {
+    console.error(e);
     reply.status(500).send({ error: "Failed to save indexes" });
-    resetUploadDirectory(filepath, decryptedFilepathDir);
+    await resetUploadDirectory(filepath, decryptedFilepathDir);
+    return;
+  }
+  try {
+    await writeFileMetadata(
+      assetconfigs.fileMetadata,
+      filename,
+      filepath,
+      decryptedFilepathDir,
+      mapPackIndexFilepath,
+      datapackIndexFilepath
+    );
+  } catch (e) {
+    console.error(e);
+    reply.status(500).send({ error: "Failed to load and write metadata for file" });
+    await resetUploadDirectory(filepath, decryptedFilepathDir);
     return;
   }
   reply.status(200).send({ message: "File uploaded" });
@@ -217,13 +238,13 @@ export const fetchImage = async function (
 };
 
 export const fetchSettingsXml = async function fetchSettingsJson(
-  request: FastifyRequest<{ Params: { settingFile: string } }>,
+  request: FastifyRequest<{ Params: { file: string } }>,
   reply: FastifyReply
 ) {
   try {
-    const { settingFile } = request.params;
+    const { file } = request.params;
     //TODO: differentiate between preset and user uploaded datpack
-    const settingsXml = (await readFile(`${decodeURIComponent(settingFile)}`)).toString();
+    const settingsXml = (await readFile(`${decodeURIComponent(file)}`)).toString();
     reply.send(settingsXml);
   } catch (e) {
     reply.send({ error: e });
@@ -264,15 +285,7 @@ export const fetchSVGStatus = async function (
  * Will fetch a chart with or without the cache
  * Will return the chart path and the hash the chart was saved with
  */
-export const fetchChart = async function fetchChart(
-  request: FastifyRequest<{
-    Params: { usecache: string; useSuggestedAge: string };
-  }>,
-  reply: FastifyReply
-) {
-  //TODO change this to be in request body
-  const usecache = request.params.usecache === "true";
-  const useSuggestedAge = request.params.useSuggestedAge === "true";
+export const fetchChart = async function fetchChart(request: FastifyRequest, reply: FastifyReply) {
   let chartrequest;
   try {
     chartrequest = JSON.parse(request.body as string);
@@ -284,12 +297,9 @@ export const fetchChart = async function fetchChart(
     });
     return;
   }
+  const { username, useCache, useSuggestedAge } = chartrequest;
   const settingsXml = chartrequest.settings;
-  //console.log(settingsXml);
-  // const settingsXml = jsonToXml(
-  //   chartrequest.settings,
-  //   chartrequest.columnSettings
-  // );
+  const hashedUsername = md5(username);
   // Compute the paths: chart directory, chart file, settings file, and URL equivalent for chart
   const hash = md5(settingsXml + chartrequest.datapacks.join(","));
   const chartDirUrlPath = `/${assetconfigs.chartsDirectory}/${hash}`;
@@ -302,7 +312,7 @@ export const fetchChart = async function fetchChart(
   // If this setting already has a chart, just return that
   try {
     await stat(chartFilePath);
-    if (!usecache) {
+    if (!useCache) {
       console.log("Deleting chart filepath since it already exists and cache is not being used");
       deleteDirectory(chartFilePath);
     } else {
@@ -325,16 +335,19 @@ export const fetchChart = async function fetchChart(
     reply.send({ error: "ERROR: failed to save settings" });
     return;
   }
-  const datapacks = chartrequest.datapacks.map(
-    (datapack) => '"' + assetconfigs.datapacksDirectory + "/" + datapack + '"'
-  );
+  const userDatapackFilepaths = await glob(`${assetconfigs.uploadDirectory}/${hashedUsername}/datapacks/*`);
+  const userDatapackNames = userDatapackFilepaths.map((datapack) => path.basename(datapack));
+  const datapacks = [];
   for (const datapack of chartrequest.datapacks) {
-    if (!assetconfigs.activeDatapacks.includes(datapack)) {
+    if (assetconfigs.activeDatapacks.includes(datapack)) {
+      datapacks.push(`"${assetconfigs.datapacksDirectory}/${datapack}"`);
+    } else if (userDatapackNames.includes(datapack)) {
+      datapacks.push(`"${assetconfigs.uploadDirectory}/${hashedUsername}/datapacks/${datapack}"`);
+    } else {
       console.log("ERROR: datapack: ", datapack, " is not included in activeDatapacks");
       console.log("assetconfig.activeDatapacks:", assetconfigs.activeDatapacks);
       console.log("chartrequest.datapacks: ", chartrequest.datapacks);
       reply.send({ error: "ERROR: failed to load datapacks" });
-      return;
     }
   }
   // Call the Java monster...
