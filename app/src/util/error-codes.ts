@@ -19,7 +19,11 @@ export enum ErrorCodes {
   UNRECOGNIZED_DATAPACK_FILE = "UNRECOGNIZED_DATAPACK_FILE",
   UNFINISHED_DATAPACK_UPLOAD_FORM = "UNFINISHED_DATAPACK_UPLOAD_FORM",
   DATAPACK_ALREADY_EXISTS = "DATAPACK_ALREADY_EXISTS",
-  NO_DATAPACKS_SELECTED = "NO_DATAPACKS_SELECTED"
+  NO_DATAPACKS_SELECTED = "NO_DATAPACKS_SELECTED",
+  UNABLE_TO_LOGIN = "UNABLE_TO_LOGIN",
+  UNABLE_TO_LOGOUT = "UNABLE_TO_LOGOUT",
+  NO_COLUMNS_SELECTED = "NO_COLUMNS_SELECTED",
+  UNIT_RANGE_EMPTY = "UNIT_RANGE_EMPTY"
 }
 
 export const ErrorMessages = {
@@ -45,5 +49,9 @@ export const ErrorMessages = {
   [ErrorCodes.UNFINISHED_DATAPACK_UPLOAD_FORM]:
     "Please finish the datapack upload form before attempting to upload the file.",
   [ErrorCodes.DATAPACK_ALREADY_EXISTS]: "Datapack already exists. Please upload a new datapack file.",
-  [ErrorCodes.NO_DATAPACKS_SELECTED]: "No datapacks selected. Please select at least one datapack to generate."
+  [ErrorCodes.NO_DATAPACKS_SELECTED]: "No datapacks selected. Please select at least one datapack to generate.",
+  [ErrorCodes.UNABLE_TO_LOGIN]: "Unable to login. Please try again later.",
+  [ErrorCodes.UNABLE_TO_LOGOUT]: "Unable to logout. Please try again later.",
+  [ErrorCodes.NO_COLUMNS_SELECTED]: "No columns selected. Please select at least one column to generate.",
+  [ErrorCodes.UNIT_RANGE_EMPTY]: "Unit range is empty. Please enter a valid unit range."
 };
