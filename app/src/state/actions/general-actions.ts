@@ -1,5 +1,5 @@
 import { action } from "mobx";
-import { ChartInfoTSC, ChartSettingsInfoTSC, TimescaleItem } from "@tsconline/shared";
+import { ChartInfoTSC, ChartSettingsInfoTSC, FontsInfo, TimescaleItem } from "@tsconline/shared";
 
 import {
   type MapInfo,
@@ -275,6 +275,10 @@ export const setDatapackConfig = action(
         units: "",
         columnDisplayType: "RootColumn"
       };
+      // all chart root font options have inheritable on
+      for (const opt in columnInfo.fontsInfo) {
+        columnInfo.fontsInfo[opt as keyof FontsInfo].inheritable = true;
+      }
       // add everything together
       // uses preparsed data on server start and appends items together
       for (const datapack of datapacks) {
@@ -307,6 +311,7 @@ export const setDatapackConfig = action(
             child.parent = column.name;
           }
         }
+        columnInfo.fontOptions = Array.from(new Set([...columnInfo.fontOptions, ...column.fontOptions]));
         columnInfo.children.push(column);
       }
       assertDatapackAgeInfo(datapackAgeInfo);
@@ -731,6 +736,16 @@ export const settingsXML = action("settingsXML", (xml: string) => {
 
 export const setIsFullscreen = action("setIsFullscreen", (newval: boolean) => {
   state.isFullscreen = newval;
+});
+
+export const updatePresetColors = action("updatePresetColors", (newColor: string) => {
+  let updatedColors = state.presetColors.filter((c) => c !== newColor);
+  updatedColors.unshift(newColor);
+  if (updatedColors.length > 10) {
+    updatedColors = updatedColors.slice(0, 10);
+  }
+  state.presetColors = updatedColors;
+  localStorage.setItem("savedColors", JSON.stringify(updatedColors));
 });
 export const setSkipEmptyColumns = action("setSkipEmptyColumns", (newval: boolean, unit: string) => {
   if (!state.settings.timeSettings[unit]) {

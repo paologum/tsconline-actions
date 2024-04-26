@@ -22,25 +22,26 @@ import FormControl from "@mui/material/FormControl";
 import Select, { SelectChangeEvent } from "@mui/material/Select";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
 import FormatItalicIcon from "@mui/icons-material/FormatItalic";
-import { MuiColorInput } from "mui-color-input";
 import CloseIcon from "@mui/icons-material/Close";
 import "./FontMenu.css";
-import { ColumnInfo, ValidFontOptions } from "@tsconline/shared";
+import { ValidFontOptions } from "@tsconline/shared";
+import TSCColorPicker from "../components/TSCColorPicker";
 import { NumericFormat } from "react-number-format";
+import { ColumnInfo } from "@tsconline/shared";
+import { convertHexToRGB } from "../util/util";
 const FontSizeTextField = ({ ...props }: TextFieldProps) => (
   <TextField {...props} className="FontSizeContainer" label="Size" variant="outlined" />
 );
+
 const FontMenuRow: React.FC<{
   target: ValidFontOptions;
   column: ColumnInfo;
 }> = observer(({ target, column }) => {
   const { actions } = useContext(context);
   const fontOpts = column.fontsInfo[target];
-  const [font, setFont] = useState("Arial");
   const handleFontChange = (event: SelectChangeEvent) => {
     if (!/^(Arial|Courier|Verdana)$/.test(event.target.value)) return;
     actions.setFontFace(target, event.target.value as "Arial" | "Courier" | "Verdana", column);
-    setFont(event.target.value as string);
   };
   const handleFormat = (_event: React.MouseEvent<HTMLElement>, newFormats: string[]) => {
     actions.setBold(target, newFormats.includes("bold"), column);
@@ -48,7 +49,8 @@ const FontMenuRow: React.FC<{
   };
 
   const handleColor = (newColor: string) => {
-    actions.setColor(target, newColor, column);
+    const rgb = convertHexToRGB(newColor, true);
+    actions.setColor(target, rgb, column);
   };
 
   return (
@@ -75,7 +77,7 @@ const FontMenuRow: React.FC<{
                 actions.setInheritable(target, !fontOpts.inheritable, column);
               }}
               inputProps={{ "aria-label": "controlled" }}
-              disabled={!fontOpts.on}
+              disabled={!fontOpts.on || column.name === "Chart Root"}
             />
           }
           label="Inheritable"
@@ -118,12 +120,10 @@ const FontMenuRow: React.FC<{
           </ToggleButton>
         </ToggleButtonGroup>
         <div id="ColorInputContainer">
-          <MuiColorInput
-            value={fontOpts.color}
-            size="small"
-            label="Color"
-            format="rgb"
-            onChange={handleColor}
+          <TSCColorPicker
+            key={column.name}
+            color={fontOpts.color}
+            onColorChange={handleColor}
             disabled={!fontOpts.on}
           />
         </div>
@@ -134,7 +134,7 @@ const FontMenuRow: React.FC<{
             fontSize: fontOpts.size,
             color: fontOpts.color
           }}
-          id={font}>
+          id={fontOpts.fontFace}>
           Sample Text
         </Typography>
       </div>
@@ -203,7 +203,7 @@ const MetaColumnFontMenu: React.FC<FontMenuProps> = observer(({ column }) => {
   );
 });
 
-const LeafColumnFontMenu: React.FC<FontMenuProps> = observer(({ column }) => {
+export const LeafColumnFontMenu: React.FC<FontMenuProps> = observer(({ column }) => {
   return (
     <Grid container rowSpacing={2} columnSpacing={0}>
       <Grid item xs={12}>

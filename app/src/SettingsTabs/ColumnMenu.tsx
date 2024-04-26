@@ -5,8 +5,11 @@ import { Button, FormControlLabel, TextField, ToggleButton, Typography } from "@
 import SettingsSharpIcon from "@mui/icons-material/SettingsSharp";
 import "./ColumnMenu.css";
 import { FontMenu } from "./FontMenu";
+import { ChangeBackgroundColor } from "./BackgroundColor";
 import { ColumnInfo } from "@tsconline/shared";
 import { TSCCheckbox } from "../components";
+import { InfoBox } from "./InfoBox";
+import { EditWidthField } from "./EditWidthField";
 
 const EditNameField = observer(() => {
   const { state, actions } = useContext(context);
@@ -50,7 +53,10 @@ export const ColumnMenu = observer(() => {
   const [openMenu, setOpenMenu] = useState(false);
   const selectedColumn = state.settingsTabs.columnSelected;
   const column = selectedColumn ? state.settingsTabs.columnHashMap.get(selectedColumn!) : undefined;
-
+  const info =
+    state.settingsTabs.columnSelected === null
+      ? ""
+      : state.settingsTabs.columnHashMap.get(state.settingsTabs.columnSelected)?.popup;
   function showMenu() {
     const menu = document.getElementById("ColumnMenuContent");
     const label = document.getElementById("ColumnMenuLabel");
@@ -86,8 +92,13 @@ export const ColumnMenu = observer(() => {
       </div>
       <div id="ColumnMenuContent" className="column-menu-content">
         {column && <EditNameField />}
+        {column && <ChangeBackgroundColor column={column} />}
         {column && <FontMenu column={column} />}
         {column && <ShowTitles column={column} />}
+        {column && column.width !== undefined && column.columnDisplayType !== "Ruler" && (
+          <EditWidthField width={column.width} key={column.name} columnObject={column} />
+        )}
+        {!!info && <InfoBox info={info} />}
       </div>
     </div>
   );
