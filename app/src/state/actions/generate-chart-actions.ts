@@ -9,23 +9,75 @@ import { NavigateFunction } from "react-router";
 import { ErrorCodes, ErrorMessages } from "../../util/error-codes";
 import DOMPurify from "dompurify";
 import { pushSnackbar } from "./general-actions";
+import { ChartSettings } from "../../types";
+import { cloneDeep } from "lodash";
 
 export const handlePopupResponse = action("handlePopupResponse", (response: boolean, navigate: NavigateFunction) => {
   if (state.settings.useDatapackSuggestedAge != response) {
     state.settings.useDatapackSuggestedAge = response;
     generalActions.setUseCache(false);
   }
+  if (response) setDatapackTimeDefaults();
   fetchChartFromServer(navigate);
 });
 
-// Shows the user a popup before chart generation if there are age spans on the datapack
-export const initiateChartGeneration = action("initiateChartGeneration", (navigate: NavigateFunction) => {
-  if (state.settings.datapackContainsSuggAge) {
-    state.showSuggestedAgePopup = true;
-  } else {
-    fetchChartFromServer(navigate);
+type UnitValues = {
+  topStageAge: number;
+  baseStageAge: number;
+  verticalScale: number;
+};
+
+function setDatapackTimeDefaults() {
+  const unitMap = new Map<string, UnitValues>();
+
+  // combine the datapacks and the min and max ages for their respective units
+  // (can't just min or max the time settings immediately, since we have to set it on top of the user settings)
+  for (const datapack of state.config.datapacks) {
+    const pack = state.datapackIndex[datapack];
+    const timeSettings = state.settings.timeSettings[pack.ageUnits];
+    if (!timeSettings) continue;
+    if (!unitMap.has(pack.ageUnits)) {
+      unitMap.set(pack.ageUnits, {
+        topStageAge: Number.MAX_SAFE_INTEGER,
+        baseStageAge: Number.MIN_SAFE_INTEGER,
+        verticalScale: Number.MIN_SAFE_INTEGER
+      });
+    }
+    const unitValues = unitMap.get(pack.ageUnits)!;
+    if ((pack.topAge || pack.topAge === 0) && (pack.baseAge || pack.baseAge === 0)) {
+      unitValues.topStageAge = Math.min(unitValues.topStageAge, pack.topAge);
+      unitValues.baseStageAge = Math.max(unitValues.baseStageAge, pack.baseAge);
+    }
+    if (pack.verticalScale) unitValues.verticalScale = Math.max(unitValues.verticalScale, pack.verticalScale);
   }
-});
+
+  // apply the combined values to the settings
+  for (const [unit, values] of unitMap) {
+    if (values.topStageAge !== Number.MAX_SAFE_INTEGER && values.baseStageAge !== Number.MIN_SAFE_INTEGER) {
+      generalActions.setBaseStageAge(values.baseStageAge, unit);
+      generalActions.setTopStageAge(values.topStageAge, unit);
+    }
+    if (values.verticalScale !== Number.MIN_SAFE_INTEGER) {
+      generalActions.setUnitsPerMY(values.verticalScale, unit);
+    }
+  }
+}
+
+// Shows the user a popup before chart generation if there are age spans on the datapack
+// only pops up if they are in the configure datapacks page, or not in the settings page
+export const initiateChartGeneration = action(
+  "initiateChartGeneration",
+  (navigate: NavigateFunction, location: string) => {
+    if (
+      state.settings.datapackContainsSuggAge &&
+      ((location === "/settings" && state.settingsTabs.selected === "datapacks") || location !== "/settings")
+    ) {
+      state.showSuggestedAgePopup = true;
+    } else {
+      fetchChartFromServer(navigate);
+    }
+  }
+);
 
 function areSettingsValidForGeneration() {
   if (!state.config.datapacks || state.config.datapacks.length === 0 || !state.settingsTabs.columns) {
@@ -51,6 +103,7 @@ function areSettingsValidForGeneration() {
 }
 
 export const fetchChartFromServer = action("fetchChartFromServer", async (navigate: NavigateFunction) => {
+  // asserts column is not null
   if (!areSettingsValidForGeneration()) return;
   state.showSuggestedAgePopup = false;
   navigate("/chart");
@@ -61,14 +114,13 @@ export const fetchChartFromServer = action("fetchChartFromServer", async (naviga
   generalActions.setChartLoading(true);
   generalActions.setChartHash("");
   generalActions.setChartContent("");
-  //let xmlSettings = jsonToXml(state.settingsJSON); // Convert JSON to XML using jsonToXml function
-  // console.log("XML Settings:", xmlSettings); // Log the XML settings to the console
   let body;
   try {
-    if (state.settingsTabs.columns !== undefined) normalizeColumnProperties(state.settingsTabs.columns);
-    const columnCopy: ColumnInfo = JSON.parse(JSON.stringify(state.settingsTabs.columns));
+    normalizeColumnProperties(state.settingsTabs.columns!);
+    const columnCopy: ColumnInfo = cloneDeep(state.settingsTabs.columns!);
     changeManuallyAddedColumns(columnCopy);
-    const xmlSettings = jsonToXml(state.settingsTSC, columnCopy, state.settings);
+    const chartSettingsCopy: ChartSettings = JSON.parse(JSON.stringify(state.settings));
+    const xmlSettings = jsonToXml(columnCopy, chartSettingsCopy);
     body = JSON.stringify({
       settings: xmlSettings,
       datapacks: state.config.datapacks,
@@ -85,7 +137,8 @@ export const fetchChartFromServer = action("fetchChartFromServer", async (naviga
   try {
     const response = await fetcher(`/charts/${state.useCache}/${state.settings.useDatapackSuggestedAge}/username`, {
       method: "POST",
-      body
+      body,
+      credentials: "include"
     });
     const answer = await response.json();
     // will check if svg is loaded
@@ -120,34 +173,42 @@ export const fetchChartFromServer = action("fetchChartFromServer", async (naviga
  * However, this is asyncronous, which makes it less likely to cause problems.
  * @param column
  */
-function changeManuallyAddedColumns(column: ColumnInfo) {
-  if (column.name === `${column.parent} Facies Label`) {
-    column.name = "Facies Label";
-  } else if (column.name === `${column.parent} Series Label`) {
-    column.name = "Series Label";
-  } else if (column.name === `${column.parent} Members`) {
-    column.name = "Members";
-  } else if (column.name === `${column.parent} Facies`) {
-    column.name = "Facies";
-  } else if (column.name === `${column.parent} Chron`) {
-    column.name = "Chron";
-  } else if (column.name === `${column.parent} Chron Label`) {
-    column.name = "Chron Label";
+const changeManuallyAddedColumns = action((column: ColumnInfo) => {
+  const parent = column.parent && state.settingsTabs.columnHashMap.get(column.parent);
+  if (parent && parent.columnDisplayType === "BlockSeriesMetaColumn") {
+    if (column.name === `${column.parent} Facies Label`) {
+      column.name = "Facies Label";
+    } else if (column.name === `${column.parent} Series Label`) {
+      column.name = "Series Label";
+    } else if (column.name === `${column.parent} Members`) {
+      column.name = "Members";
+    } else if (column.name === `${column.parent} Facies`) {
+      column.name = "Facies";
+    } else if (column.name === `${column.parent} Chron`) {
+      column.name = "Chron";
+    } else if (column.name === `${column.parent} Chron Label`) {
+      column.name = "Chron Label";
+    }
+  }
+  if (column.columnDisplayType === "RootColumn" && column.name.substring(0, 14) === "Chart Title in") {
+    column.name = column.name.substring(15, column.name.length);
   }
   for (const child of column.children) {
     changeManuallyAddedColumns(child);
   }
-}
+});
 
-function normalizeColumnProperties(column: ColumnInfo) {
+const normalizeColumnProperties = action((column: ColumnInfo) => {
   if (column.width !== undefined && (isNaN(column.width) || column.width < 20)) {
     column.width = 20;
-    pushSnackbar("Invalid width input found, updating column width to 20", "warning");
+    let name = column.name.substring(0, 17);
+    if (name.length < column.name.length) name += "...";
+    pushSnackbar("Invalid width input found, updating " + name + " width to 20", "warning");
   }
   for (const child of column.children) {
     normalizeColumnProperties(child);
   }
-}
+});
 
 const savePreviousSettings = action("savePreviousSettings", () => {
   state.prevSettings = JSON.parse(JSON.stringify(state.settings));

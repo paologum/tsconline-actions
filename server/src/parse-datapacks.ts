@@ -2,7 +2,6 @@ import { createReadStream } from "fs";
 import {
   ColumnInfo,
   Facies,
-  DatapackAgeInfo,
   DatapackParsingPack,
   SubBlockInfo,
   Block,
@@ -41,7 +40,9 @@ import {
   ColumnInfoTypeMap,
   ColumnInfoType,
   assertSubInfo,
-  SubInfo
+  SubInfo,
+  assertDatapackParsingPack,
+  defaultEventSettings
 } from "@tsconline/shared";
 import { trimInvisibleCharacters, grabFilepaths, hasVisibleCharacters, capitalizeFirstLetter } from "./util.js";
 import { createInterface } from "readline";
@@ -65,7 +66,6 @@ type FaciesFoundAndAgeRange = {
 };
 /**
  * parses the METACOLUMN and info of the children string
- * TODO: add TITLEOFF
  * @param array the children string to parse
  * @returns the correctly parsed children string array
  */
@@ -110,8 +110,6 @@ export function spliceArrayAtFirstSpecialMatch(array: string[]): ParsedColumnEnt
  * Main Function...
  * Get columns based on a decrypt_filepath that leads to the decrypted directory
  * and an amount of files in a string array that should pop up in that decrypted directory
- * Have not checked edge cases in which a file doesn't show up, will only return any that are correct.
- * Maybe add functionality in the future to check if all the files exist
  * @param decryptFilePath the decryption folder location
  * @param files the files to be parsed
  * @returns
@@ -123,7 +121,6 @@ export async function parseDatapacks(file: string, decryptFilePath: string): Pro
   const columnInfoArray: ColumnInfo[] = [];
   const isChild: Set<string> = new Set();
   const allEntries: Map<string, ParsedColumnEntry> = new Map();
-  const datapackAgeInfo: DatapackAgeInfo = { datapackContainsSuggAge: false };
   const faciesMap: Map<string, Facies> = new Map();
   const blocksMap: Map<string, Block> = new Map();
   const eventMap: Map<string, Event> = new Map();
@@ -141,13 +138,29 @@ export async function parseDatapacks(file: string, decryptFilePath: string): Pro
     maxAge: -99999,
     fontOptions: ["Column Header"]
   };
+  let topAge: number | null = null;
+  let baseAge: number | null = null;
   let chartTitle = "Chart Title";
   let ageUnits = "Ma";
+  let defaultChronostrat = "UNESCO";
+  let date: string | null = null;
+  let verticalScale: number | null = null;
+  let formatVersion = 1.5;
   try {
     for (const decryptPath of decryptPaths) {
-      const { units, title } = await getAllEntries(decryptPath, allEntries, isChild, datapackAgeInfo);
-      ageUnits = units;
+      const { units, title, chronostrat, datapackDate, vertScale, version, top, base } = await getAllEntries(
+        decryptPath,
+        allEntries,
+        isChild
+      );
+      topAge = top;
+      baseAge = base;
       chartTitle = title;
+      defaultChronostrat = chronostrat;
+      ageUnits = units;
+      if (datapackDate) date = datapackDate;
+      if (vertScale) verticalScale = vertScale;
+      if (version) formatVersion = version;
       const allParsedEntries = Array.from(allEntries.keys()).concat(Array.from(isChild));
       await getColumnTypes(
         decryptPath,
@@ -172,7 +185,7 @@ export async function parseDatapacks(file: string, decryptFilePath: string): Pro
         // if the parent is not a child
         if (!isChild.has(parent)) {
           const compare = recursive(
-            chartTitle,
+            "Chart Title",
             parent,
             children,
             columnInfoArray,
@@ -210,10 +223,10 @@ export async function parseDatapacks(file: string, decryptFilePath: string): Pro
   }
   const columnInfo = columnInfoArray.concat(loneColumns);
   columnInfo.unshift({
-    name: ageUnits,
-    editName: ageUnits,
+    name: ageUnits.split(" ")[0]!,
+    editName: ageUnits.split(" ")[0]!,
     fontsInfo: JSON.parse(JSON.stringify(defaultFontsInfo)),
-    fontOptions: ["Column Header", "Ruler Label"],
+    fontOptions: getValidFontOptions("Ruler"),
     on: true,
     width: 100,
     enableTitle: true,
@@ -224,14 +237,14 @@ export async function parseDatapacks(file: string, decryptFilePath: string): Pro
     },
     popup: "",
     children: [],
-    parent: chartTitle,
+    parent: "Chart Title",
     minAge: Number.MIN_VALUE,
     maxAge: Number.MAX_VALUE,
     units: ageUnits,
     columnDisplayType: "Ruler"
   });
   const chartColumn: ColumnInfo = {
-    name: chartTitle,
+    name: "Chart Title",
     editName: chartTitle,
     fontsInfo: JSON.parse(JSON.stringify(defaultFontsInfo)),
     fontOptions: returnValue.fontOptions,
@@ -251,8 +264,37 @@ export async function parseDatapacks(file: string, decryptFilePath: string): Pro
     units: ageUnits,
     columnDisplayType: "RootColumn"
   };
-  return { columnInfo: chartColumn, datapackAgeInfo, ageUnits };
+  setShowLabels(chartColumn);
+  const datapackParsingPack = { columnInfo: chartColumn, ageUnits, defaultChronostrat, formatVersion };
+  assertDatapackParsingPack(datapackParsingPack);
+  if (date) datapackParsingPack.date = date;
+  if (topAge || topAge === 0) datapackParsingPack.topAge = topAge;
+  if (baseAge || baseAge === 0) datapackParsingPack.baseAge = baseAge;
+  if (verticalScale) datapackParsingPack.verticalScale = verticalScale;
+  return datapackParsingPack;
 }
+
+/**
+ * @Paolo I chose to implement this way to avoid creating crazy conditionals in the many ways we create columns since we have
+ * to check multiple different types of columns and if the font options include a certain type of font option.
+ * I also am not 100% sure of whether or not being specific about the font options is necessary, but I think it is.
+ * (The xml gives everyone the ability to show labels, but I think it is better to be specific about it)
+ * @param column
+ */
+function setShowLabels(column: ColumnInfo) {
+  if (
+    column.columnDisplayType !== "RootColumn" &&
+    column.columnDisplayType !== "MetaColumn" &&
+    column.columnDisplayType !== "BlockSeriesMetaColumn"
+  ) {
+    if (column.fontOptions.includes("Age Label")) column.showAgeLabels = false;
+    if (column.fontOptions.includes("Uncertainty Label")) column.showUncertaintyLabels = false;
+  }
+  for (const child of column.children) {
+    setShowLabels(child);
+  }
+}
+
 /**
  * This will populate a mapping of all parents : childen[]
  * We need this to recursively iterate correctly. We do not want
@@ -265,49 +307,64 @@ export async function parseDatapacks(file: string, decryptFilePath: string): Pro
 export async function getAllEntries(
   filename: string,
   allEntries: Map<string, ParsedColumnEntry>,
-  isChild: Set<string>,
-  datapackAgeInfo: DatapackAgeInfo
+  isChild: Set<string>
 ) {
   const fileStream = createReadStream(filename);
   const readline = createInterface({ input: fileStream, crlfDelay: Infinity });
-  let topAge: number | null = null;
-  let bottomAge: number | null = null;
+  let top: number | null = null;
+  let base: number | null = null;
+  let date: string | null = null;
   let ageUnits: string = "Ma";
   let chartTitle: string = "Chart Title";
+  let defaultChronostrat = "UNESCO";
+  let formatVersion = 1.5;
+  let vertScale: number | null = null;
   for await (const line of readline) {
     if (!line) continue;
-    if (line.includes("SetTop") || line.includes("SetBase")) {
-      const parts = line.split(":");
-      if (parts.length >= 2) {
-        const key = parts[0] ? parts[0].trim() : null;
-        const value = parts[1] ? parseInt(parts[1].trim(), 10) : NaN;
-        if (!isNaN(value)) {
-          if (key === "SetTop") {
-            topAge = value;
-          } else if (key === "SetBase") {
-            bottomAge = value;
+    // grab any datapack properties
+    const split = line.split("\t");
+    let value = split[1];
+    if (value) {
+      switch (split[0]) {
+        case "SetTop:":
+          if (!isNaN(Number(value.trim()))) top = Number(value);
+          break;
+        case "SetBase:":
+          if (!isNaN(Number(value.trim()))) base = Number(value);
+          break;
+        case "chart title:":
+          chartTitle = value.trim();
+          break;
+        case "age units:":
+          ageUnits = value.trim();
+          break;
+        case "default chronostrat:":
+          if (!/^(USGS|UNESCO)$/.test(value.trim())) {
+            console.error(
+              "Default chronostrat value in datapack is neither USGS nor UNESCO, setting to default UNESCO"
+            );
+            break;
           }
-        }
-      }
-    }
-    if (line.includes("chart title")) {
-      const parts = line.split("\t");
-      if (parts.length == 2) {
-        const key = parts[0] ? parts[0].trim() : null;
-        const value = parts[1] ? parts[1].trim() : null;
-        if (key === "chart title:" && value) {
-          chartTitle = value;
-        }
-      }
-    }
-    if (line.includes("age units")) {
-      const parts = line.split("\t");
-      if (parts.length == 2) {
-        const key = parts[0] ? parts[0].trim() : null;
-        const value = parts[1] ? parts[1].trim() : null;
-        if (key === "age units:" && value) {
-          ageUnits = value;
-        }
+          defaultChronostrat = value.trim();
+          break;
+        case "date:":
+          if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) value = value.split("/").reverse().join("-");
+          date = new Date(value).toISOString().split("T")[0] || null;
+          break;
+        case "format version:":
+          formatVersion = Number(value.trim());
+          if (isNaN(formatVersion)) {
+            console.error("Format version is not a number, setting to default 1.5");
+            formatVersion = 1.5;
+          }
+          break;
+        case "SetScale:":
+          vertScale = Number(value);
+          if (isNaN(vertScale)) {
+            console.error("Vertical scale is not a number, setting to default null");
+            vertScale = null;
+          }
+          break;
       }
     }
     if (!line.includes("\t:\t")) {
@@ -333,13 +390,16 @@ export async function getAllEntries(
     }
     allEntries.set(parent, parsedChildren);
   }
-  //set the age info if it exists
-  datapackAgeInfo.datapackContainsSuggAge = topAge != null && bottomAge != null;
-  if (topAge != null && bottomAge != null) {
-    datapackAgeInfo.topAge = topAge;
-    datapackAgeInfo.bottomAge = bottomAge;
-  }
-  return { title: chartTitle, units: ageUnits };
+  return {
+    title: chartTitle,
+    units: ageUnits,
+    top,
+    base,
+    chronostrat: defaultChronostrat,
+    datapackDate: date,
+    vertScale,
+    version: formatVersion
+  };
 }
 /**
  * This function will populate the maps with the parsed entries in the filename
@@ -528,12 +588,7 @@ export async function getColumnTypes(
       Object.assign(blank, { ...createDefaultColumnHeaderProps() });
       continue;
     }
-    if (
-      !inFreehandBlock &&
-      (tabSeparated[1] === "freehand" ||
-        tabSeparated[1] === "freehand-overlay" ||
-        tabSeparated[1] === "freehand-underlay")
-    ) {
+    if (!inFreehandBlock && tabSeparated[1] === "freehand") {
       setColumnHeaders(freehand, tabSeparated);
       inFreehandBlock = true;
     } else if (inFreehandBlock) {
@@ -1342,6 +1397,7 @@ function recursive(
     Object.assign(currentColumnInfo, {
       ...currentEvent,
       fontOptions: getValidFontOptions("Event"),
+      columnDisplayType: "Event",
       subInfo: JSON.parse(JSON.stringify(subEventInfo))
     });
     returnValue.fontOptions = currentColumnInfo.fontOptions;
@@ -1353,6 +1409,7 @@ function recursive(
     const { width, subChronInfo, ...currentChron } = chronMap.get(currentColumn)!;
     Object.assign(currentColumnInfo, {
       ...currentChron,
+      columnDisplayType: "BlockSeriesMetaColumn",
       subInfo: JSON.parse(JSON.stringify(subChronInfo))
     });
     addChronChildren(
@@ -1373,6 +1430,7 @@ function recursive(
     Object.assign(currentColumnInfo, {
       ...currentPoint,
       fontOptions: getValidFontOptions("Point"),
+      columnDisplayType: "Point",
       subInfo: JSON.parse(JSON.stringify(subPointInfo))
     });
     returnValue.fontOptions = currentColumnInfo.fontOptions;
@@ -1384,6 +1442,7 @@ function recursive(
     // TODO NOTE FOR FUTURE: @Paolo - Java file appends all fonts to this, but from trial and error, only column header makes sense. If this case changes here we would change it
     Object.assign(currentColumnInfo, {
       ...currentFreehand,
+      columnDisplayType: "Freehand",
       subInfo: JSON.parse(JSON.stringify(subFreehandInfo))
     });
     returnValue.maxAge = currentColumnInfo.maxAge;
@@ -1392,9 +1451,12 @@ function recursive(
   if (blankMap.has(currentColumn)) {
     const currentBlank = blankMap.get(currentColumn)!;
     // TODO NOTE FOR FUTURE: @Paolo - Java file appends all fonts to this, but from trial and error, only column header makes sense. If this case changes here we would change it
-    Object.assign(currentColumnInfo, currentBlank);
+    Object.assign(currentColumnInfo, {
+      ...currentBlank,
+      columnDisplayType: "Blank"
+    });
   }
-
+  addColumnSettings(currentColumnInfo);
   childrenArray.push(currentColumnInfo);
 
   if (parsedColumnEntry) {
@@ -1656,7 +1718,7 @@ function createLoneColumn(
 ): ColumnInfo {
   // block changes to zone for display
   if (type === "Block") type = "Zone";
-  return {
+  const column: ColumnInfo = {
     ...props,
     editName: props.name,
     fontOptions,
@@ -1667,6 +1729,18 @@ function createLoneColumn(
     subInfo,
     columnDisplayType: type
   };
+  addColumnSettings(column);
+  return column;
+}
+
+function addColumnSettings(column: ColumnInfo) {
+  switch (column.columnDisplayType) {
+    case "Event":
+      column.columnSpecificSettings = JSON.parse(JSON.stringify(defaultEventSettings));
+      break;
+    default:
+      break;
+  }
 }
 
 function getValidFontOptions(type: DisplayedColumnTypes): ValidFontOptions[] {
@@ -1688,7 +1762,7 @@ function getValidFontOptions(type: DisplayedColumnTypes): ValidFontOptions[] {
       return ["Column Header", "Age Label", "Sequence Column Label"];
     case "Ruler":
     case "AgeAge":
-      return ["Column Header", "Age Label"];
+      return ["Column Header", "Ruler Label"];
     case "Transect":
       return ["Column Header"];
     case "Freehand":
@@ -1713,7 +1787,7 @@ function processColumn<T extends ColumnInfoType>(
   } else {
     const { [subInfoKey]: subInfo, ...columnHeaderProps } = column;
     assertColumnHeaderProps(columnHeaderProps);
-    assertSubInfo(subInfo);
+    assertSubInfo(subInfo, type);
     loneColumns.push(createLoneColumn(columnHeaderProps, getValidFontOptions(type), units, subInfo, type));
   }
   return false;

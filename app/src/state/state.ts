@@ -1,6 +1,6 @@
 import { observable } from "mobx";
 
-import { SnackbarInfo, ChartSettings, ErrorAlert, FaciesOptions, MapHistory, Config } from "../types";
+import { SnackbarInfo, ChartSettings, ErrorAlert, FaciesOptions, MapHistory, Config, SettingsTabs } from "../types";
 import { TimescaleItem } from "@tsconline/shared";
 import type {
   MapHierarchy,
@@ -11,8 +11,7 @@ import type {
   Presets,
   DatapackIndex,
   MapPackIndex,
-  Patterns,
-  ChartInfoTSC
+  Patterns
 } from "@tsconline/shared";
 import { ErrorCodes } from "../util/error-codes";
 import { defaultColors } from "../util/constant";
@@ -29,7 +28,7 @@ export type State = {
   geologicalTopStageAges: TimescaleItem[];
   geologicalBaseStageAges: TimescaleItem[];
   settingsTabs: {
-    selected: "time" | "font" | "column" | "mappoints" | "datapacks";
+    selected: SettingsTabs;
     columns: ColumnInfo | undefined;
     columnSelected: string | null;
     geologicalTopStages: GeologicalStages;
@@ -63,7 +62,6 @@ export type State = {
   chartContent: string;
   chartHash: string;
   settingsXML: string;
-  settingsTSC: ChartInfoTSC;
   settings: ChartSettings;
   prevSettings: ChartSettings;
   useCache: boolean;
@@ -133,7 +131,6 @@ export const state = observable<State>({
   chartContent: "",
   chartHash: "",
   settingsXML: "",
-  settingsTSC: {},
   settings: JSON.parse(JSON.stringify(settings)),
   prevSettings: JSON.parse(JSON.stringify(settings)),
   useCache: true,
