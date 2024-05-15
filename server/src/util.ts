@@ -1,7 +1,8 @@
-import fs from "fs";
+import fs, { createReadStream } from "fs";
 import path from "path";
 import fsPromises, { rm } from "fs/promises";
 import { glob } from "glob";
+import { createInterface } from "readline/promises";
 
 /**
  * Recursively deletes directory INCLUDING directoryPath
@@ -154,4 +155,37 @@ export async function resetUploadDirectory(uploadedFile: string, decryptedUpload
   if (fs.existsSync(decryptedUploadedDirectory)) {
     deleteDirectory(decryptedUploadedDirectory);
   }
+}
+
+/**
+ * This is different from Object.assign because it only sets the properties that are common between the two objects
+ * @param o1
+ * @param o2
+ * @returns
+ */
+export function setCommonProperties<T>(o1: T, o2: Partial<T>): T {
+  for (const key in o1) {
+    if (key in o2 && o2[key as keyof T] !== undefined) {
+      const k = key as keyof T;
+      o1[k] = o2[k]!;
+    }
+  }
+  return o1;
+}
+
+export async function checkHeader(filepath: string) {
+  let isEncrypted;
+  try {
+    const fileStream = createReadStream(filepath);
+    const readline = createInterface({ input: fileStream, crlfDelay: Infinity });
+
+    for await (const line of readline) {
+      isEncrypted = line.includes("TSCreator Encrypted Datafile");
+      break;
+    }
+  } catch (e) {
+    return false;
+  }
+
+  return isEncrypted;
 }

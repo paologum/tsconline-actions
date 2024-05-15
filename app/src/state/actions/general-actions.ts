@@ -15,7 +15,6 @@ import {
   type MapInfo,
   type ColumnInfo,
   type MapHierarchy,
-  type GeologicalStages,
   assertSuccessfulServerResponse,
   Presets,
   assertSVGStatus,
@@ -188,6 +187,9 @@ export const fetchUserDatapacks = action("fetchUserDatapacks", async () => {
     } catch (e) {
       if (response.status != 404) {
         displayServerError(data, ErrorCodes.INVALID_USER_DATAPACKS, ErrorMessages[ErrorCodes.INVALID_USER_DATAPACKS]);
+      } else {
+        fetchDatapackIndex();
+        fetchMapPackIndex();
       }
     }
   } catch (e) {
@@ -467,23 +469,6 @@ const fetchSettingsXML = async (settingsPath: string): Promise<ChartInfoTSC | nu
 };
 
 /**
- * Sets the geological top stages and the base stages
- * Assuming the given stages includes the stages[TOP] = 0
- */
-export const setGeologicalStages = action("setGeologicalStages", (stages: GeologicalStages) => {
-  let top = stages["TOP"];
-  const geologicalTopStages: GeologicalStages = { Present: 0 };
-  Object.keys(stages).map((key) => {
-    geologicalTopStages[key] = top;
-    top = stages[key];
-  });
-  delete stages["TOP"];
-  delete geologicalTopStages["TOP"];
-  state.settingsTabs.geologicalTopStages = geologicalTopStages;
-  state.settingsTabs.geologicalBaseStages = stages;
-});
-
-/**
  * Removes cache in public dir on server
  */
 export const removeCache = action("removeCache", async () => {
@@ -704,6 +689,44 @@ export const fetchImage = action("fetchImage", async (datapackName: string, imag
   return image;
 });
 
+export const requestDownload = action(async (filename: string, needEncryption: boolean) => {
+  let route;
+  if (!needEncryption) {
+    route = `/download/user-datapacks/${filename}`;
+  } else {
+    route = `/download/user-datapacks/${filename}?needEncryption=${needEncryption}`;
+  }
+  const response = await fetcher(route, {
+    method: "GET"
+  });
+  if (!response.ok) {
+    switch (response.status) {
+      case 404: {
+        displayServerError(
+          response,
+          ErrorCodes.USER_DATAPACK_FILE_NOT_FOUND_FOR_DOWNLOAD,
+          ErrorMessages[ErrorCodes.USER_DATAPACK_FILE_NOT_FOUND_FOR_DOWNLOAD]
+        );
+        break;
+      }
+      case 500: {
+        displayServerError(response, ErrorCodes.SERVER_RESPONSE_ERROR, ErrorMessages[ErrorCodes.SERVER_RESPONSE_ERROR]);
+        break;
+      }
+      case 422: {
+        displayServerError(
+          response,
+          ErrorCodes.INCORRECT_ENCRYPTION_HEADER,
+          ErrorMessages[ErrorCodes.INCORRECT_ENCRYPTION_HEADER]
+        );
+        break;
+      }
+    }
+  }
+  const file = response.blob();
+  return file;
+});
+
 export const logout = action("logout", async () => {
   try {
     const response = await fetcher("/auth/logout", {
@@ -745,6 +768,7 @@ export const sessionCheck = action("sessionCheck", async () => {
 export const setIsLoggedIn = action("setIsLoggedIn", (newval: boolean) => {
   state.isLoggedIn = newval;
 });
+
 export const setuseDatapackSuggestedAge = action((isChecked: boolean) => {
   state.settings.useDatapackSuggestedAge = isChecked;
 });
@@ -826,13 +850,35 @@ export const setTopStageAge = action("setTopStageAge", (age: number, unit: strin
   if (!state.settings.timeSettings[unit]) {
     throw new Error(`Unit ${unit} not found in timeSettings`);
   }
+  if (isNaN(age)) {
+    pushError(ErrorCodes.TOP_STAGE_AGE_INVALID);
+    return;
+  }
+  removeError(ErrorCodes.TOP_STAGE_AGE_INVALID);
+  const gap = state.settings.timeSettings[unit].baseStageAge - state.settings.timeSettings[unit].topStageAge;
   state.settings.timeSettings[unit].topStageAge = age;
+  const correspondingKey = state.geologicalTopStageAges.find((item) => item.value === age);
+  if (correspondingKey) {
+    setTopStageKey(correspondingKey.key, unit);
+  } else setTopStageKey("", unit);
+  if (state.settings.timeSettings[unit].baseStageAge <= state.settings.timeSettings[unit].topStageAge) {
+    setBaseStageAge(state.settings.timeSettings[unit].topStageAge + gap, unit);
+  }
 });
 export const setBaseStageAge = action("setBaseStageAge", (age: number, unit: string) => {
   if (!state.settings.timeSettings[unit]) {
     throw new Error(`Unit ${unit} not found in timeSettings`);
   }
+  if (isNaN(age) || age < state.settings.timeSettings[unit].topStageAge) {
+    pushError(ErrorCodes.BASE_STAGE_AGE_INVALID);
+    return;
+  }
+  removeError(ErrorCodes.BASE_STAGE_AGE_INVALID);
   state.settings.timeSettings[unit].baseStageAge = age;
+  const correspondingKey = state.geologicalBaseStageAges.find((item) => item.value === age);
+  if (correspondingKey) {
+    setBaseStageKey(correspondingKey.key, unit);
+  } else setBaseStageKey("", unit);
 });
 
 export const settingsXML = action("settingsXML", (xml: string) => {
