@@ -3,7 +3,7 @@
 import { defaultFontsInfoConstant } from "./constants.js";
 
 export * from "./constants.js";
-
+export * from "./util.js";
 export * from "./settings-types.js";
 
 export type SuccessfulServerResponse = {
@@ -162,7 +162,7 @@ export type ColumnInfoTypeMap = {
   Blank: Blank;
 };
 
-type EventType = "events" | "ranges";
+export type EventType = "events" | "ranges";
 
 export type ColumnInfoType = keyof ColumnInfoTypeMap;
 
@@ -283,6 +283,7 @@ export type Point = ColumnHeaderProps & {
   pointShape: PointShape;
   minX: number;
   maxX: number;
+  scaleStep: number;
 };
 
 export type Sequence = ColumnHeaderProps & {

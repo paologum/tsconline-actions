@@ -46,14 +46,16 @@ import {
   isPointShape,
   assertPoint,
   defaultPointSettings,
-  defaultPoint
+  defaultPoint,
+  calculateAutoScale
 } from "@tsconline/shared";
 import {
   trimInvisibleCharacters,
   grabFilepaths,
   hasVisibleCharacters,
   capitalizeFirstLetter,
-  setCommonProperties
+  setCommonProperties,
+  formatColumnName
 } from "./util.js";
 import { createInterface } from "readline";
 import _ from "lodash";
@@ -389,20 +391,16 @@ export async function getAllEntries(
     if (!line.includes("\t:\t")) {
       continue;
     }
-    const parent = line.split("\t:\t")[0];
-
-    //THIS ACTUALLY DOESN'T MATTER ANYMORE BUT I WILL LEAVE IT HERE JUST IN CASE
-    //TODO
-    //to replace quotations surrounding the column name for future parsing access in state.
-    //if this is not done, then the keys in the state for columns have quotations surrounding it
-    //which is not consistent with the equivalent keys found in the parsed settings json object.
-    //ex "North Belgium -- Oostende, Brussels, Antwerp, Campine, Maastrichen" vs
-    //North Belgium -- Oostende, Brussels, Antwerp, Campine, Maastrichen
+    let parent = line.split("\t:\t")[0];
 
     const childrenstring = line.split("\t:\t")[1];
     if (!parent || !hasVisibleCharacters(parent) || !childrenstring || !hasVisibleCharacters(childrenstring)) continue;
-    // childrenstring = childrenstring!.split("\t\t")[0];
+    parent = formatColumnName(parent);
     const parsedChildren = spliceArrayAtFirstSpecialMatch(childrenstring!.split("\t"));
+    //for formatted names in mapping
+    for (let i = 0; i < parsedChildren.children.length; i++) {
+      if (parsedChildren.children[i]) parsedChildren.children[i] = formatColumnName(parsedChildren.children[i]!);
+    }
     //if the entry is a child, add it to a set.
     for (const child of parsedChildren.children) {
       isChild.add(child);
@@ -682,6 +680,7 @@ export async function getColumnTypes(
       }
     }
 
+    // TODO chron-only
     if (!inChronBlock && (tabSeparated[1] === "chron" || tabSeparated[1] === "chron-only")) {
       setColumnHeaders(chron, tabSeparated);
       inChronBlock = true;
@@ -775,7 +774,8 @@ export async function getColumnTypes(
  * @param tabSeparated
  */
 function setColumnHeaders(column: ColumnHeaderProps, tabSeparated: string[]) {
-  column.name = tabSeparated[0]!;
+  //for formatted names in ColumnInfo object
+  column.name = formatColumnName(tabSeparated[0]!);
   const width = Number(tabSeparated[2]!);
   const rgb = tabSeparated[3];
   const enableTitle = tabSeparated[4];
@@ -856,7 +856,6 @@ function addSequenceToSequenceMap(sequence: Sequence, sequenceMap: Map<string, S
  * @param pointMap
  */
 function addPointToPointMap(point: Point, pointMap: Map<string, Point>) {
-  const margin = 0.1;
   for (const subPoint of point.subPointInfo) {
     point.minAge = Math.min(subPoint.age, point.minAge);
     point.maxAge = Math.max(subPoint.age, point.maxAge);
@@ -869,10 +868,12 @@ function addPointToPointMap(point: Point, pointMap: Map<string, Point>) {
     point.minX !== Number.MAX_VALUE &&
     point.maxX !== Number.MIN_VALUE
   ) {
-    const outerMargin = ((point.maxX - point.minX) * margin) / 2;
-    point.lowerRange = point.minX - outerMargin;
-    point.upperRange = point.maxX + outerMargin;
+    const { lowerRange, upperRange, scaleStep } = calculateAutoScale(point.minX, point.maxX);
+    point.lowerRange = lowerRange;
+    point.upperRange = upperRange;
+    point.scaleStep = scaleStep;
   }
+
   pointMap.set(point.name, JSON.parse(JSON.stringify(point)));
   Object.assign(point, { ...createDefaultColumnHeaderProps(), ..._.cloneDeep(defaultPoint) });
 }
@@ -1161,8 +1162,8 @@ export function processPoint(line: string): SubPointInfo | null {
   };
   const tabSeparated = line.split("\t");
   if (tabSeparated.length < 2 || tabSeparated.length > 4 || tabSeparated[0]) return null;
-  const age = Number(tabSeparated[1]!);
-  const xVal = Number(tabSeparated[2]!);
+  const age = parseFloat(tabSeparated[1]!);
+  const xVal = parseFloat(tabSeparated[2]!);
   const popup = tabSeparated[3];
   if (isNaN(age) || !tabSeparated[1])
     throw new Error("Error processing point line, age: " + tabSeparated[1]! + " is NaN");
@@ -1293,6 +1294,7 @@ export function processFacies(line: string): SubFaciesInfo | null {
   }
   return subFaciesInfo;
 }
+
 /**
  * This is a recursive function meant to instantiate all columns.
  * Datapack is encrypted as <parent>\t:\t<child>\t<child>\t<child>
@@ -1474,6 +1476,7 @@ function recursive(
       pointShape,
       minX,
       maxX,
+      scaleStep,
       ...currentPoint
     } = pointMap.get(currentColumn)!;
     const deconstructedPointSettings = {
@@ -1486,7 +1489,8 @@ function recursive(
       smoothed,
       pointShape,
       minX,
-      maxX
+      maxX,
+      scaleStep
     };
     Object.assign(currentColumnInfo, {
       ...currentPoint,
