@@ -59,7 +59,7 @@ import {
 } from "./util.js";
 import { createInterface } from "readline";
 import _ from "lodash";
-import { DatapackDescriptionInfo, assertDatapackDescriptionInfo } from "./types";
+import { DatapackDescriptionInfo } from "./types";
 const patternForColor = /^(\d+\/\d+\/\d+)$/;
 const patternForLineStyle = /^(solid|dashed|dotted)$/;
 const patternForAbundance = /^(TOP|missing|rare|common|frequent|abundant|sample|flood)$/;
@@ -288,11 +288,7 @@ export async function parseDatapacks(
     expanded: true
   };
   setShowLabels(chartColumn);
-  try {
-    assertDatapackDescriptionInfo(datapackInfo);
-  } catch (e) {
-    console.log(`Error ${e} found while processing DatapackDescriptionInfo`);
-  }
+
   const datapackParsingPack = {
     columnInfo: chartColumn,
     ageUnits,
