@@ -294,7 +294,6 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
   const decryptedFilepathDir = path.join(decryptDir, filenameWithoutExtension);
   const mapPackIndexFilepath = path.join(userDir, "MapPackIndex.json");
   const datapackIndexFilepath = path.join(userDir, "DatapackIndex.json");
-  //const serverdatapackInfo: DatapackIndex = {};
   const datapackInfo: DatapackDescriptionInfo = {
     file: filename,
     description: "",
