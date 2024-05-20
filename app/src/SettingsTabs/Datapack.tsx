@@ -12,11 +12,13 @@ import { Menu, MenuItem } from "@szhsin/react-menu";
 import "./Datapack.css";
 import { Dialog } from "@mui/material";
 import { ErrorCodes } from "../util/error-codes";
+import { StringIterator, set } from "lodash";
 
 export const Datapacks = observer(function Datapacks() {
   const theme = useTheme();
   const { actions } = useContext(context);
   const [formOpen, setFormOpen] = useState(false);
+  const [mobileTooltip, setMobileTooltip] = useState<number | null>(null);
 
   const handleCheckboxChange = (name: string) => {
     if (state.config.datapacks.includes(name)) {
@@ -72,6 +74,9 @@ export const Datapacks = observer(function Datapacks() {
     }
   };
 
+  const handleInfoClick = (index: number) => {
+    setMobileTooltip(mobileTooltip === index ? null : index);
+  };
   return (
     <div style={{ background: theme.palette.settings.light }}>
       <div className="container">
@@ -99,8 +104,15 @@ export const Datapacks = observer(function Datapacks() {
 
                   <td className="info-cell">
                     <div>
-                      <Tooltip title="Description" arrow placement="right">
-                        <InfoIcon className="info-icon" />
+                      <Tooltip
+                        title="Description"
+                        arrow
+                        placement="right"
+                        open={mobileTooltip === index}
+                        disableHoverListener={window.innerWidth <= 768}
+                        onClose={() => setMobileTooltip(null)}
+                        classes={{ tooltip: mobileTooltip === index ? "show" : "" }}>
+                        <InfoIcon className="info-icon" onClick={() => handleInfoClick(index)} />
                       </Tooltip>
                     </div>
                   </td>

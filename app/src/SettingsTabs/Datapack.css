@@ -59,3 +59,16 @@
 .download-icon {
   margin-top: 4px;
 }
+
+.info-icon {
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .MuiTooltip-tooltip {
+    display: none;
+  }
+  .MuiTooltip-tooltip.show {
+    display: block;
+  }
+}
