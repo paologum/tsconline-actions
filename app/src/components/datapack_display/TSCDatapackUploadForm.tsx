@@ -13,7 +13,7 @@ import { TSCCheckbox } from "../TSCCheckbox";
 
 type TSCDatapackUploadFormProps = {
   close: () => void;
-  upload: (file: File, name: string, description: string) => Promise<void>;
+  upload: (file: File, name: string, description: string, isPublic: boolean) => Promise<void>;
 };
 export const TSCDatapackUploadForm: React.FC<TSCDatapackUploadFormProps> = ({ close, upload }) => {
   const { state, actions } = useContext(context);

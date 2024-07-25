@@ -11,7 +11,9 @@ import {
   assertDatapackIndex,
   assertIndexResponse,
   assertTimescale,
-  assertMapPackIndex
+  assertMapPackIndex,
+  DatapackParsingPack,
+  MapPack
 } from "@tsconline/shared";
 import { deleteDirectory, resetUploadDirectory, checkHeader, assetconfigs, adminconfig, getBytes } from "./util.js";
 import md5 from "md5";
@@ -240,6 +242,7 @@ export const fetchUserDatapacks = async function fetchUserDatapacks(request: Fas
     return;
   }
   const userDir = path.join(assetconfigs.uploadDirectory, uuid);
+  const publicDir = path.join(assetconfigs.uploadDirectory, "public");
 
   try {
     await access(userDir);
@@ -256,24 +259,33 @@ export const fetchUserDatapacks = async function fetchUserDatapacks(request: Fas
     Object.assign(datapackIndex, JSON.parse(dataPackData));
     const mapPackData = await readFile(path.join(userDir, "MapPackIndex.json"), "utf8");
     Object.assign(mapPackIndex, JSON.parse(mapPackData));
+
+    const publicDatapacks: DatapackIndex = await readFile(path.join(publicDir, "DatapackIndex.json"), "utf8")
+      .then((data) => JSON.parse(data))
+      .catch(() => ({}));
+
+    const publicMapPacks: MapPackIndex = await readFile(path.join(publicDir, "MapPackIndex.json"), "utf8")
+      .then((data) => JSON.parse(data))
+      .catch(() => ({}));
+
+    const publicFiles = await readFile(path.join(publicDir, "publicFiles.json"), "utf8")
+      .then((data) => JSON.parse(data))
+      .catch(() => []);
+
+    for (const file of publicFiles) {
+      if (publicDatapacks[file]) {
+        Object.assign(datapackIndex, publicDatapacks);
+      }
+      if (publicMapPacks[file]) {
+        Object.assign(mapPackIndex, publicMapPacks);
+      }
+    }
   } catch (e) {
     reply
       .status(500)
       .send({ error: "Failed to load indexes, corrupt json files present. Please contact customer service." });
     return;
   }
-
-  //PUBLIC CHECK
-  const publicDir = path.join(assetconfigs.uploadDirectory, "public");
-  try {
-    const publicDatapackData = await readFile(path.join(publicDir, "DatapackIndex.json"), "utf8");
-    Object.assign(datapackIndex, JSON.parse(publicDatapackData));
-    const publicMapData = await readFile(path.join(publicDir, "MapPackIndex.json"), "utf8");
-    Object.assign(mapPackIndex, JSON.parse(publicMapData));
-  } catch (e) {
-    console.log("Public directory does not exist or is empty - fetchUserDatapacks");
-  }
-
   const indexResponse = { datapackIndex, mapPackIndex };
   assertIndexResponse(indexResponse);
   reply.status(200).send(indexResponse);
@@ -281,7 +293,7 @@ export const fetchUserDatapacks = async function fetchUserDatapacks(request: Fas
 
 // If at some point a delete datapack function is needed, this function needs to be modified for race conditions
 export const uploadDatapack = async function uploadDatapack(request: FastifyRequest, reply: FastifyReply) {
-  const uuid = request.session.get("uuid"); //"username"; 
+  const uuid = request.session.get("uuid");
   if (!uuid) {
     reply.status(401).send({ error: "User not logged in" });
     return;
@@ -467,35 +479,43 @@ export const uploadDatapack = async function uploadDatapack(request: FastifyRequ
   //public
   if (isPublic) {
     const publicDir = path.join(assetconfigs.uploadDirectory, "public");
-    const publicConfigPath = path.join(publicDir, "publicDatapacks.json");
+    const publicDatapackPath = path.join(publicDir, "DatapackIndex.json");
+    const publicMappackPath = path.join(publicDir, "MapPackIndex.json");
+    const publicFilesPath = path.join(publicDir, "publicFiles.json");
+    await mkdir(publicDir, { recursive: true });
+
+    let publicDatapacks: DatapackIndex = {};
+    let publicMappacks: MapPackIndex = {};
+    let publicFiles: string[] = [];
+
     try {
-      await mkdir(publicDir, { recursive: true });
-    } catch (e) {
-      await errorHandler("Failed to create public directory", 500, e);
-      return;
-    }
-    let publicConfig: Record<string, any> = {};
-    try {
-      const publicData = await readFile(publicConfigPath, "utf-8");
-      publicConfig = JSON.parse(publicData);
+      const publicData = await readFile(publicDatapackPath, "utf-8");
+      publicDatapacks = JSON.parse(publicData);
+      const publicMapData = await readFile(publicMappackPath, "utf-8");
+      publicMappacks = JSON.parse(publicMapData);
+      const publicFilesData = await readFile(publicFilesPath, "utf-8");
+      publicFiles = JSON.parse(publicFilesData);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code != "ENOENT") {
-        await errorHandler("Failed to read public config file", 500, e);
+        await errorHandler("Failed to read public JSON files", 500, e);
         return;
       }
     }
-    publicConfig[filename] = {
-      filepath: filepath,
-      user: uuid,
-      description: description,
-      title: name,
-      size: getBytes(bytes)
-    };
-
+    if (datapackIndex[filename]) {
+      publicDatapacks[filename] = datapackIndex[filename] as DatapackParsingPack;
+    }
+    if (mapPackIndex[filename]) {
+      publicMappacks[filename] = mapPackIndex[filename] as MapPack;
+    }
+    if (!publicFiles.includes(filename)) {
+      publicFiles.push(filename);
+    }
     try {
-      await writeFile(publicConfigPath, JSON.stringify(publicConfig));
+      await writeFile(publicDatapackPath, JSON.stringify(publicDatapacks));
+      await writeFile(publicMappackPath, JSON.stringify(publicMappacks));
+      await writeFile(publicFilesPath, JSON.stringify(publicFiles));
     } catch (e) {
-      await errorHandler("Failed to update public config file", 500, e);
+      await errorHandler("Failed to update public index files", 500, e);
       return;
     }
   }

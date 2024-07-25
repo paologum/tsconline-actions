@@ -206,6 +206,7 @@ export const fetchUserDatapacks = action("fetchUserDatapacks", async () => {
       credentials: "include"
     });
     const data = await response.json();
+    console.log("data in fetchUserdatapack general actions", data);
     try {
       assertIndexResponse(data);
       const { mapPackIndex, datapackIndex } = data;
