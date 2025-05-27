@@ -402,7 +402,7 @@ jobs:
               git init
               git remote add origin "$REPO_SSH"
               git config core.sparseCheckout true
-              git config core.sparseCheckoutCone true
+              git config core.sparseCheckoutCone false
               echo "**/*.md" > .git/info/sparse-checkout
               git pull --depth=1 origin main
               echo "Sparse clone complete."
