@@ -199,7 +199,6 @@ jobs:
             exit 1
           fi
 
-
       - name: Parse JAR Names
         if: github.event.pull_request.user.login != 'dependabot[bot]'
         id: parse_jar_names
