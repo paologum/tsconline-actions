@@ -377,7 +377,7 @@ jobs:
             CONTAINER_NAME="pr-preview-${PR_NUMBER}_pr-preview-run_1"
             TSCONLINE_DIR="/home/aaron/tsconline"
             PR_PREVIEW_DIR="${TSCONLINE_DIR}/pr-preview-${PR_NUMBER}"
-            HELP_DIR="server/assets/help"
+            HELP_DIR="${PR_PREVIEW_DIR}/server/assets/help"
             REPO_SSH="git@github.com:earthhistoryviz/tsconline-help.git"
             BRANCH="${{ github.event.pull_request.head.ref }}"
             cd "$TSCONLINE_DIR"
