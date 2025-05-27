@@ -404,8 +404,7 @@ jobs:
               git config core.sparseCheckout true
               git config core.sparseCheckoutCone true
               echo "**/*.md" > .git/info/sparse-checkout
-
-              git pull --depth=1 origin "$BRANCH"
+              git pull --depth=1 origin main
               echo "Sparse clone complete."
               cd "$TSCONLINE_DIR"
             else
