@@ -414,7 +414,7 @@ jobs:
               cp "$TSCONLINE_DIR/server/assets/jars/"* "$PR_PREVIEW_DIR/server/assets/jars/"
               cd "$HELP_DIR"
               git pull origin main
-            cd "$TSCONLINE_DIR"
+              cd "$TSCONLINE_DIR"
             fi
 
             unzip -q -o "build-artifacts.zip" -d "$PR_PREVIEW_DIR"
